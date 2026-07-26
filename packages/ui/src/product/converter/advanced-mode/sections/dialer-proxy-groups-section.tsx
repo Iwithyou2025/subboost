@@ -19,6 +19,7 @@ import { toast } from "@subboost/ui/components/ui/toaster";
 import { DEFAULT_LOAD_BALANCE_STRATEGY, type ProxyGroupGroupType } from "@subboost/core/types/config";
 import { PROXY_GROUP_MODULES } from "@subboost/core/generator/proxy-groups";
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
+import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import { cn } from "@subboost/ui/lib/utils";
 import { useConfigStore, PRESET_RELAY_NAMES } from "@subboost/ui/store/config-store";
 import { useProductInteractionAdapter } from "@subboost/ui/product/interactions";
@@ -53,6 +54,7 @@ export function DialerProxyGroupsSection({
 }) {
   const {
     nodes,
+    nodeNameFilter,
     dialerProxyGroups,
     customProxyGroups,
     proxyGroupNameOverrides,
@@ -77,6 +79,18 @@ export function DialerProxyGroupsSection({
   const [relaySearchByGroupId, setRelaySearchByGroupId] = React.useState<Record<string, string>>({});
   const [targetSearchByGroupId, setTargetSearchByGroupId] = React.useState<Record<string, string>>({});
   const interactions = useProductInteractionAdapter();
+  const effectiveNodes = React.useMemo(
+    () => resolveNodeNameFilter(nodes, nodeNameFilter).effectiveNodes,
+    [nodeNameFilter, nodes],
+  );
+  const rawNodeNameSet = React.useMemo(
+    () => new Set(nodes.map((node) => node.name)),
+    [nodes],
+  );
+  const effectiveNodeNameSet = React.useMemo(
+    () => new Set(effectiveNodes.map((node) => node.name)),
+    [effectiveNodes],
+  );
 
   const toggleDialerGroupExpand = (groupId: string) => {
     setExpandedDialerGroups((prev) => {
@@ -142,7 +156,7 @@ export function DialerProxyGroupsSection({
       }
     }
 
-    const available = nodes
+    const available = effectiveNodes
       .filter((n) => !usedTargets.has(n.name))
       .map((n) => ({
         name: n.name,
@@ -199,6 +213,12 @@ export function DialerProxyGroupsSection({
           {/* 已有的中转组 */}
           {dialerProxyGroups.map((group) => {
             const isEnabled = group.enabled !== false;
+            const visibleRelayCount = group.relayNodes.filter(
+              (name) => !rawNodeNameSet.has(name) || effectiveNodeNameSet.has(name),
+            ).length;
+            const visibleTargetCount = group.targetNodes.filter((name) =>
+              effectiveNodeNameSet.has(name),
+            ).length;
             const isEditing = editingDialerGroupId === group.id;
             const dialerGroupType: ProxyGroupGroupType = group.type;
             const dialerStrategy = group.strategy ?? DEFAULT_LOAD_BALANCE_STRATEGY;
@@ -215,7 +235,7 @@ export function DialerProxyGroupsSection({
                   return displayName.toLowerCase().includes(relaySearchKeyword);
                 })
               : availableRelayNodes;
-            const availableTargetNodes = nodes.filter((node) => !group.relayNodes.includes(node.name));
+            const availableTargetNodes = effectiveNodes.filter((node) => !group.relayNodes.includes(node.name));
             const visibleTargetNodes = targetSearchKeyword
               ? availableTargetNodes.filter((node) => node.name.toLowerCase().includes(targetSearchKeyword))
               : availableTargetNodes;
@@ -312,8 +332,8 @@ export function DialerProxyGroupsSection({
                       className="pointer-events-none relative z-10 ml-auto flex"
                       disabled={!isEnabled}
                       items={[
-                        { label: `${group.relayNodes.length} 中转`, tone: "accent" },
-                        { label: `${group.targetNodes.length} 落地`, tone: "success", separator: "arrow" },
+                        { label: `${visibleRelayCount} 中转`, tone: "accent" },
+                        { label: `${visibleTargetCount} 落地`, tone: "success", separator: "arrow" },
                       ]}
                     />
                     <Switch
@@ -327,25 +347,29 @@ export function DialerProxyGroupsSection({
                           return;
                         }
 
-                        const nodeNameSet = new Set(nodes.map((n) => n.name));
                         const otherEnabledGroups = dialerProxyGroups.filter(
                           (g) => g.id !== group.id && g.enabled !== false
                         );
                         const otherTargets = new Set<string>();
                         const otherRelayNodeNames = new Set<string>();
                         for (const g of otherEnabledGroups) {
-                          for (const t of g.targetNodes) otherTargets.add(t);
+                          for (const t of g.targetNodes) {
+                            if (effectiveNodeNameSet.has(t)) otherTargets.add(t);
+                          }
                           for (const r of g.relayNodes) {
-                            if (nodeNameSet.has(r)) otherRelayNodeNames.add(r);
+                            if (effectiveNodeNameSet.has(r)) otherRelayNodeNames.add(r);
                           }
                         }
 
                         const nextTargetNodes = group.targetNodes.filter(
-                          (n) => !otherTargets.has(n) && !otherRelayNodeNames.has(n)
+                          (n) =>
+                            !effectiveNodeNameSet.has(n) ||
+                            (!otherTargets.has(n) && !otherRelayNodeNames.has(n))
                         );
                         const nextRelayNodes = group.relayNodes.filter((n) => {
                           if (n === "DIRECT") return true;
-                          if (!nodeNameSet.has(n)) return true; // 代理组等
+                          if (!rawNodeNameSet.has(n)) return true; // 代理组等
+                          if (!effectiveNodeNameSet.has(n)) return true;
                           return !otherTargets.has(n);
                         });
 
@@ -561,7 +585,7 @@ export function DialerProxyGroupsSection({
             );
           })}
 
-          {nodes.length === 0 && dialerProxyGroups.length === 0 && (
+          {effectiveNodes.length === 0 && dialerProxyGroups.length === 0 && (
             <p className="text-xs text-white/30 text-center py-2">请先导入节点后配置中转代理组</p>
           )}
 

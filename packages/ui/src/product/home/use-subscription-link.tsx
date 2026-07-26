@@ -27,6 +27,7 @@ import {
   type AutoUpdateIntervalPolicy,
   type AutoUpdateIntervalPolicyOverride,
 } from "@subboost/core/subscription/auto-update-interval";
+import type { NodeNameFilterConfig } from "@subboost/core/subscription/node-name-filter";
 import { tryNormalizeSubscriptionUrlInput } from "@subboost/core/subscription/url-input";
 import { DEFAULT_NODE_NAME_TEMPLATE } from "@subboost/core/node-name-template";
 import { formatDateInBeijing } from "@subboost/core/time/beijing";
@@ -296,6 +297,7 @@ export function useSubscriptionLink({
     setIsCreatingSubscription(true);
 
     try {
+      const nodeNameFilter: NodeNameFilterConfig = useConfigStore.getState().nodeNameFilter;
       const subscriptionInfo: SubscriptionUserInfo = {};
       const sourceSubscriptionInfoById = new Map<string, SubscriptionUserInfo>();
       for (const source of storeSources) {
@@ -324,6 +326,7 @@ export function useSubscriptionLink({
             template,
             appliedTemplateId,
             smartNodeMatchingEnabled,
+            nodeNameFilter,
             // 用于“我的订阅 → 编辑”恢复输入源（保留 YAML/节点链接/多个 URL 的顺序）
             sources: storeSources
             .filter((s) => typeof s?.content === "string" && s.content.trim())

@@ -116,6 +116,7 @@ function resetStoreState(overrides: Record<string, unknown> = {}) {
     proxyGroupAdvanced: {},
     proxyGroupOrder: [],
     ruleOrder: [],
+    nodeNameFilter: { enabled: false, excludeRegexes: [] },
     ...overrides,
   };
   return { reset, generateConfig };
@@ -235,6 +236,10 @@ describe("useEditingSubscriptionLoader", () => {
               cnIpNoResolve: false,
               experimentalCnUseCnRuleSet: true,
               smartNodeMatchingEnabled: false,
+              nodeNameFilter: {
+                enabled: true,
+                excludeRegexes: ["^Remote$"],
+              },
             },
           },
         })
@@ -285,6 +290,10 @@ describe("useEditingSubscriptionLoader", () => {
       proxyGroupOrder: ["module:ai"],
       listenerPorts: { Remote: 41000 },
       appliedTemplateId: "template-1",
+      nodeNameFilter: {
+        enabled: true,
+        excludeRegexes: ["^Remote$"],
+      },
       dnsYaml: "dns: {}",
       ruleProviderBaseUrl: "https://rules.example.com",
       testUrl: "https://test.example.com",
@@ -340,6 +349,10 @@ describe("useEditingSubscriptionLoader", () => {
         smartNodeMatchingEnabled: true,
       })
     );
+    expect(mocks.bag.storeState.nodeNameFilter).toEqual({
+      enabled: false,
+      excludeRegexes: [],
+    });
   });
 
   it("hydrates single URL sources from the saved subscription info snapshot", async () => {

@@ -250,6 +250,34 @@ describe("DialerProxyGroupsSection", () => {
     expect(mocks.captures.switches[1]).toEqual(expect.objectContaining({ checked: false }));
   });
 
+  it("offers only effective nodes while retaining configured group references", () => {
+    mocks.store.nodes = nodes;
+    mocks.store.nodeNameFilter = {
+      enabled: true,
+      excludeRegexes: ["^alpha$"],
+    };
+    mocks.store.dialerProxyGroups = [
+      groupA,
+      {
+        ...groupB,
+        relayNodes: ["Alpha", "DIRECT"],
+        targetNodes: ["Alpha"],
+      },
+    ];
+
+    const { html } = renderSection({ 0: new Set(["g-a"]) });
+
+    expect(html).not.toContain(">Alpha<");
+    expect(html).toContain("Beta");
+    expect(mocks.store.dialerProxyGroups[0].relayNodes).toEqual(["Alpha"]);
+    mocks.captures.switches[1].onCheckedChange(true);
+    expect(mocks.store.updateDialerProxyGroup).toHaveBeenCalledWith("g-b", {
+      enabled: true,
+      relayNodes: ["Alpha", "DIRECT"],
+      targetNodes: ["Alpha"],
+    });
+  });
+
   it("adds custom groups, rejects duplicates, and records interactions", () => {
     const { setters } = renderSection({ 1: true, 2: { emoji: "🧩", name: "New Dialer" } });
 

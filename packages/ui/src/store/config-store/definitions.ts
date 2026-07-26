@@ -17,6 +17,10 @@ import {
 } from "@subboost/core/subscription/import-error";
 import type { SubscriptionUserInfo } from "@subboost/core/subscription/subscription-userinfo";
 import { tryNormalizeSubscriptionUrlInput } from "@subboost/core/subscription/url-input";
+import {
+  DEFAULT_NODE_NAME_FILTER_CONFIG,
+  type NodeNameFilterConfig,
+} from "@subboost/core/subscription/node-name-filter";
 import { getActiveProductApiAdapter } from "@subboost/ui/product/api-adapter";
 import {
   getNodeSourceIds,
@@ -32,6 +36,14 @@ export { DEFAULT_BASE_CONFIG_YAML };
 export type RuleSetDraft = Omit<CustomRuleSet, "target">;
 export type { BuiltinRuleEdits, CustomRuleSet, ProxyGroupAdvancedConfig };
 export type { DialerProxyGroup, SubBoostTemplateConfig } from "@subboost/core/types/template-config";
+export type { NodeNameFilterConfig } from "@subboost/core/subscription/node-name-filter";
+
+export type ConfigHistoryEntry =
+  | string
+  | {
+      yaml: string;
+      nodeNameFilter: NodeNameFilterConfig;
+    };
 
 // 预设的中转组名称
 export const PRESET_RELAY_NAMES = [
@@ -164,6 +176,7 @@ export interface ConfigState {
   }>;
   parseErrors: string[];
   isLoading: boolean;
+  nodeNameFilter: NodeNameFilterConfig;
 
   // 订阅源
   sources: SubscriptionSource[];
@@ -217,7 +230,7 @@ export interface ConfigState {
   generatedYamlError: string | null;
 
   // 历史记录（用于撤销）
-  history: string[];
+  history: ConfigHistoryEntry[];
   historyIndex: number;
 }
 
@@ -236,7 +249,8 @@ export interface ConfigActions {
   restoreNodeName: (nodeName: string) => void;
   restoreDeletedNode: (originName: string) => void;
   moveNode: (nodeName: string, direction: "up" | "down") => void;
-  setNodeOrder: (nodeName: string, order: number) => void;
+  setNodeOrder: (nodeName: string, order: number, scopeNodeNames?: string[]) => void;
+  setNodeNameFilter: (config: NodeNameFilterConfig) => void;
 
   // 模板和配置
   setTemplate: (template: TemplateType) => void;
@@ -330,6 +344,10 @@ export const initialState: ConfigState = {
   deletedNodes: [],
   parseErrors: [],
   isLoading: false,
+  nodeNameFilter: {
+    enabled: DEFAULT_NODE_NAME_FILTER_CONFIG.enabled,
+    excludeRegexes: [...DEFAULT_NODE_NAME_FILTER_CONFIG.excludeRegexes],
+  },
   sources: [
     { id: "1", type: "url", content: "" },
     { id: "2", type: "yaml", content: "" },

@@ -1,5 +1,6 @@
 import type { ConfigState } from "./definitions";
 import { safeParseJsonObject } from "@subboost/core/json";
+import { normalizeNodeNameFilterConfig } from "@subboost/core/subscription/node-name-filter";
 import { getConfigDraftStorageNameForUser } from "./draft-storage";
 
 export {
@@ -58,6 +59,7 @@ export function normalizePersistedConfigState(
     ...(typeof state.proxyGroupAdvancedModeEnabled === "boolean"
       ? { proxyGroupAdvancedModeEnabled: state.proxyGroupAdvancedModeEnabled }
       : {}),
+    nodeNameFilter: normalizeNodeNameFilterConfig(state.nodeNameFilter),
     cnIpNoResolve: typeof state.cnIpNoResolve === "boolean" ? state.cnIpNoResolve : true,
     experimentalCnUseCnRuleSet:
       typeof state.experimentalCnUseCnRuleSet === "boolean" ? state.experimentalCnUseCnRuleSet : true,
@@ -76,6 +78,7 @@ export function partializeConfigState(state: ConfigState): Partial<ConfigState> 
     testInterval: state.testInterval,
     ruleProviderBaseUrl: state.ruleProviderBaseUrl,
     proxyGroupAdvancedModeEnabled: state.proxyGroupAdvancedModeEnabled,
+    nodeNameFilter: normalizeNodeNameFilterConfig(state.nodeNameFilter),
     cnIpNoResolve: state.cnIpNoResolve,
     experimentalCnUseCnRuleSet: state.experimentalCnUseCnRuleSet,
   };

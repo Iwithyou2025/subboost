@@ -26,6 +26,7 @@ import {
 import type { HiddenPresetRuleIds } from "@subboost/core/generator/module-rules";
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
 import { resolveProxyGroupTargetName } from "@subboost/core/proxy-group-targets";
+import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import { useConfigStore, type RuleSetDraft } from "@subboost/ui/store/config-store";
 import {
   buildManualRuleTargets,
@@ -44,6 +45,7 @@ export function ProxyGroupsCategories() {
   const {
     ruleProviderBaseUrl,
     nodes = [],
+    nodeNameFilter,
     testUrl,
     testInterval,
     cnIpNoResolve,
@@ -82,6 +84,10 @@ export function ProxyGroupsCategories() {
     Set<string>
   >(new Set(customProxyGroups.length > 0 ? [CUSTOM_CATEGORY_ID] : []));
   const didApplyCustomCategoryDefault = React.useRef(customProxyGroups.length > 0);
+  const effectiveNodes = React.useMemo(
+    () => resolveNodeNameFilter(nodes, nodeNameFilter).effectiveNodes,
+    [nodeNameFilter, nodes],
+  );
   const [editingModuleId, setEditingModuleId] = React.useState<string | null>(
     null,
   );
@@ -159,9 +165,9 @@ export function ProxyGroupsCategories() {
     return grouped;
   }, [hiddenProxyGroups]);
   const generatedProxyGroupNodeCounts = React.useMemo(() => {
-    if (nodes.length === 0) return new Map<string, number>();
+    if (effectiveNodes.length === 0) return new Map<string, number>();
     const generated = generateProxyGroups({
-      nodes,
+      nodes: effectiveNodes,
       enabledModules: enabledProxyGroups,
       ruleProviderBaseUrl,
       testUrl,
@@ -172,7 +178,7 @@ export function ProxyGroupsCategories() {
       builtinRuleEdits,
       proxyGroupNameOverrides,
     });
-    const nodeNameSet = new Set(nodes.map((node) => node.name));
+    const nodeNameSet = new Set(effectiveNodes.map((node) => node.name));
     return new Map(
       generated.map((group) => [
         group.name,
@@ -187,7 +193,7 @@ export function ProxyGroupsCategories() {
       ]),
     );
   }, [
-    nodes,
+    effectiveNodes,
     enabledProxyGroups,
     ruleProviderBaseUrl,
     testUrl,

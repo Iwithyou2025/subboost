@@ -14,6 +14,7 @@ import { PROXY_GROUP_MODULES, generateProxyGroups } from "@subboost/core/generat
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
 import { REGION_PRESETS } from "@subboost/core/proxy-group-advanced";
 import { getProxyGroupMemberKey } from "@subboost/core/proxy-group-targets";
+import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import { getNodeSourceIds } from "@subboost/core/subscription/node-source-state";
 import { isSubscriptionInfoNodeName } from "@subboost/core/subscription/info-node-name";
 import type {
@@ -31,6 +32,7 @@ import {
   insertMemberAfterProtected,
   isNodeMember,
   isProxyGroupMember,
+  mergeVisibleMemberOrder,
   normalizeList,
   withMember,
   withoutMember,
@@ -136,6 +138,7 @@ export function ProxyGroupAdvancedPanel({
 }) {
   const {
     nodes,
+    nodeNameFilter,
     sources,
     enabledProxyGroups,
     customProxyGroups,
@@ -148,6 +151,32 @@ export function ProxyGroupAdvancedPanel({
     ruleProviderBaseUrl,
   } = useConfigStore();
   const [draggingKey, setDraggingKey] = React.useState<string | null>(null);
+  const effectiveNodes = React.useMemo(
+    () => resolveNodeNameFilter(nodes, nodeNameFilter).effectiveNodes,
+    [nodeNameFilter, nodes],
+  );
+  const effectiveNodeNameSet = React.useMemo(
+    () => new Set(effectiveNodes.map((node) => node.name)),
+    [effectiveNodes],
+  );
+  const filteredNodeMemberKeys = React.useMemo(
+    () =>
+      new Set(
+        nodes
+          .filter((node) => !effectiveNodeNameSet.has(node.name))
+          .map((node) => getProxyGroupMemberKey({ kind: "node", name: node.name })),
+      ),
+    [effectiveNodeNameSet, nodes],
+  );
+  const preserveFilteredMemberOrder = React.useCallback(
+    (nextVisibleOrder: readonly ProxyGroupMemberRef[]) =>
+      mergeVisibleMemberOrder(
+        advanced.memberOrder,
+        nextVisibleOrder,
+        filteredNodeMemberKeys,
+      ),
+    [advanced.memberOrder, filteredNodeMemberKeys],
+  );
   const activeCustomProxyGroups = React.useMemo(
     () => customProxyGroups.filter((group) => group.enabled !== false),
     [customProxyGroups],
@@ -164,8 +193,8 @@ export function ProxyGroupAdvancedPanel({
   }, [customProxyGroups, target.id, target.kind]);
 
   const activeNodes = React.useMemo(
-    () => nodes.filter((node) => !isSubscriptionInfoNodeName(node.name)),
-    [nodes],
+    () => effectiveNodes.filter((node) => !isSubscriptionInfoNodeName(node.name)),
+    [effectiveNodes],
   );
   const moduleNames = React.useMemo(
     () =>
@@ -180,7 +209,7 @@ export function ProxyGroupAdvancedPanel({
 
   const generatedProxyGroups = React.useMemo(() => {
     return generateProxyGroups({
-      nodes,
+      nodes: effectiveNodes,
       enabledModules: previewEnabledProxyGroups,
       ruleProviderBaseUrl,
       testUrl,
@@ -192,7 +221,7 @@ export function ProxyGroupAdvancedPanel({
       proxyGroupNameOverrides,
     });
   }, [
-    nodes,
+    effectiveNodes,
     previewEnabledProxyGroups,
     ruleProviderBaseUrl,
     testUrl,
@@ -204,9 +233,9 @@ export function ProxyGroupAdvancedPanel({
     proxyGroupNameOverrides,
   ]);
   const generatedProxyNames = React.useMemo(() => {
-    if (nodes.length === 0) return [];
+    if (effectiveNodes.length === 0) return [];
     return generatedProxyGroups.find((group) => group.name === target.name)?.proxies ?? [];
-  }, [generatedProxyGroups, nodes.length, target.name]);
+  }, [effectiveNodes.length, generatedProxyGroups, target.name]);
 
   const candidateMembers = React.useMemo(() => {
     const rawNames = [
@@ -309,9 +338,9 @@ export function ProxyGroupAdvancedPanel({
       const next = [...current];
       const [item] = next.splice(from, 1);
       next.splice(to, 0, item);
-      onChange({ memberOrder: next });
+      onChange({ memberOrder: preserveFilteredMemberOrder(next) });
     },
-    [includedMembers, onChange],
+    [includedMembers, onChange, preserveFilteredMemberOrder],
   );
 
   const sourceIds = normalizeList(advanced.sourceIds);
@@ -338,21 +367,37 @@ export function ProxyGroupAdvancedPanel({
       onChange({
         extraMembers: withMember(extraRefs, member.ref),
         excludedMembers: withoutMember(excludedRefs, member.key),
-        memberOrder: insertMemberAfterProtected(includedMembers, member.ref),
+        memberOrder: preserveFilteredMemberOrder(
+          insertMemberAfterProtected(includedMembers, member.ref),
+        ),
       });
     },
-    [excludedRefs, extraRefs, includedMembers, onChange],
+    [
+      excludedRefs,
+      extraRefs,
+      includedMembers,
+      onChange,
+      preserveFilteredMemberOrder,
+    ],
   );
 
   const addAllNodes = React.useCallback(() => {
-    onChange(
-      buildAddAllMembersPatch({
-        advanced,
-        currentMembers: includedMembers,
-        membersToAdd: excludedNodeMembers,
-      }),
-    );
-  }, [advanced, excludedNodeMembers, includedMembers, onChange]);
+    const patch = buildAddAllMembersPatch({
+      advanced,
+      currentMembers: includedMembers,
+      membersToAdd: excludedNodeMembers,
+    });
+    onChange({
+      ...patch,
+      memberOrder: preserveFilteredMemberOrder(patch.memberOrder ?? []),
+    });
+  }, [
+    advanced,
+    excludedNodeMembers,
+    includedMembers,
+    onChange,
+    preserveFilteredMemberOrder,
+  ]);
 
   const removeAllNodes = React.useCallback(() => {
     onChange(
@@ -365,13 +410,15 @@ export function ProxyGroupAdvancedPanel({
 
   const addAllProxyGroups = React.useCallback(() => {
     if (addableProxyGroupMembers.length > 0) {
-      onChange(
-        buildAddAllMembersPatch({
-          advanced,
-          currentMembers: includedMembers,
-          membersToAdd: addableProxyGroupMembers,
-        }),
-      );
+      const patch = buildAddAllMembersPatch({
+        advanced,
+        currentMembers: includedMembers,
+        membersToAdd: addableProxyGroupMembers,
+      });
+      onChange({
+        ...patch,
+        memberOrder: preserveFilteredMemberOrder(patch.memberOrder ?? []),
+      });
     }
     const skippedCount =
       excludedProxyGroupMembers.length - addableProxyGroupMembers.length;
@@ -387,6 +434,7 @@ export function ProxyGroupAdvancedPanel({
     excludedProxyGroupMembers.length,
     includedMembers,
     onChange,
+    preserveFilteredMemberOrder,
   ]);
 
   const removeAllProxyGroups = React.useCallback(() => {

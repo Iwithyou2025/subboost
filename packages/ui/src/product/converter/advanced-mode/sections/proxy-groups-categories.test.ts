@@ -444,6 +444,40 @@ describe("ProxyGroupsCategories", () => {
     expect(mocks.store.updateProxyGroupAdvanced).toHaveBeenCalledWith("auto", { sourceIds: ["source-a"] });
   });
 
+  it("builds proxy-group previews from effective nodes", () => {
+    mocks.store.nodes = [
+      {
+        name: "TAG-Notice",
+        _originName: "套餐到期提醒",
+        type: "ss",
+        server: "notice.example.com",
+        port: 8388,
+        cipher: "aes-128-gcm",
+        password: "secret",
+      },
+      {
+        name: "US",
+        type: "ss",
+        server: "us.example.com",
+        port: 8388,
+        cipher: "aes-128-gcm",
+        password: "secret",
+      },
+    ];
+    mocks.store.nodeNameFilter = {
+      enabled: true,
+      excludeRegexes: ["套餐到期"],
+    };
+
+    renderCategories({ 0: new Set(["core"]) });
+
+    expect(vi.mocked(generateProxyGroups)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        nodes: [expect.objectContaining({ name: "US" })],
+      }),
+    );
+  });
+
   it("renders custom category and disabled non-core module branches", async () => {
     mocks.store.hiddenProxyGroups = [];
     mocks.store.enabledProxyGroups = [];
