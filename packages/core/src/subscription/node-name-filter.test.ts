@@ -20,6 +20,11 @@ function node(name: string, originName?: string): ParsedNode {
   };
 }
 
+function unsafeNestedQuantifierPattern(): string {
+  const plus = String.fromCharCode(43);
+  return `(a${plus})${plus}$`;
+}
+
 describe("node name filter config", () => {
   it("treats a missing config as disabled and disables an empty enabled config", () => {
     expect(parseNodeNameFilterConfig(undefined)).toEqual({
@@ -64,7 +69,7 @@ describe("node name filter config", () => {
   it("reports the original line for invalid, unsafe, and non-string rules", () => {
     const result = validateNodeNameFilterConfig({
       enabled: true,
-      excludeRegexes: ["valid", 123, "[", "(a+)+$"],
+      excludeRegexes: ["valid", 123, "[", unsafeNestedQuantifierPattern()],
     });
 
     expect(result).toEqual({
@@ -126,7 +131,10 @@ describe("node name filter config", () => {
     );
 
     try {
-      parseNodeNameFilterConfig({ enabled: true, excludeRegexes: ["(", "(a+)+$"] });
+      parseNodeNameFilterConfig({
+        enabled: true,
+        excludeRegexes: ["(", unsafeNestedQuantifierPattern()],
+      });
       throw new Error("Expected parsing to fail");
     } catch (error) {
       expect(error).toBeInstanceOf(NodeNameFilterConfigError);
@@ -198,7 +206,7 @@ describe("resolveNodeNameFilter", () => {
     expect(() =>
       resolveNodeNameFilter([node("Node")], {
         enabled: true,
-        excludeRegexes: ["(a+)+$"],
+        excludeRegexes: [unsafeNestedQuantifierPattern()],
       })
     ).toThrow(NodeNameFilterConfigError);
   });

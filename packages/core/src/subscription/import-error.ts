@@ -72,10 +72,18 @@ const NETWORK_CODE_BADGE: Record<string, string> = {
 };
 
 export function extractHttpStatus(text: string): number | null {
-  const match = text.match(
-    /\b(?:HTTP(?:\/\d(?:\.\d)?)?|status(?:\s+code)?|returned|responded(?:\s+with)?)\s*[:=]?\s*(\d{3})\b/i
+  const prefix = text.match(
+    /\b(?:HTTP(?:\/\d(?:\.\d)?)?|status(?:\s+code)?|returned|responded(?:\s+with)?)/i
   );
+  if (!prefix || prefix.index === undefined) return null;
+
+  let remainder = text.slice(prefix.index + prefix[0].length).trimStart();
+  if (remainder.startsWith(":") || remainder.startsWith("=")) {
+    remainder = remainder.slice(1).trimStart();
+  }
+  const match = remainder.match(/^(\d{3})\b/);
   if (!match) return null;
+
   const code = Number.parseInt(match[1], 10);
   return code >= 400 && code < 600 ? code : null;
 }
