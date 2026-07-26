@@ -3,6 +3,7 @@ import {
   buildGenerateOptionsFromConfig,
   getEffectiveTestOptions,
 } from "./config-utils";
+import { generateClashConfig } from "@subboost/core/generator";
 import type { ParsedNode } from "@subboost/core/types/node";
 
 function node(patch: Partial<ParsedNode> = {}): ParsedNode {
@@ -154,6 +155,107 @@ describe("subscription config utils", () => {
     });
     expect(options.proxyGroupNameOverrides).toEqual({ auto: "Auto" });
     expect(options.proxyGroupOrder).toEqual(["auto"]);
+  });
+
+  it("generates from effective nodes while matching persisted original names", () => {
+    const kept = node({ name: "Singapore", _originName: "SG Premium" });
+    const excluded = node({ name: "Pinned Hong Kong", _originName: "HK IPLC" });
+    const options = buildGenerateOptionsFromConfig(
+      {
+        nodeNameFilter: {
+          enabled: true,
+          excludeRegexes: ["^hk"],
+        },
+      },
+      { nodes: [kept, excluded] }
+    );
+
+    expect(options.nodes).toHaveLength(1);
+    expect(options.nodes[0]).toMatchObject({
+      name: "Singapore",
+      _originName: "SG Premium",
+    });
+    expect(options.nodes[0]).not.toHaveProperty("dialer-proxy");
+  });
+
+  it("temporarily ignores filtered listener and dialer references and restores them when disabled", () => {
+    const nodes = [
+      node({ name: "Relay", _originName: "Relay" }),
+      node({ name: "Target", _originName: "Target" }),
+    ];
+    const config = {
+      nodeNameFilter: {
+        enabled: true,
+        excludeRegexes: ["^target$"],
+      },
+      listenerPorts: {
+        Relay: 12000,
+        Target: 12001,
+      },
+      dialerProxyGroups: [
+        {
+          id: "chain",
+          name: "Chain",
+          enabled: true,
+          type: "select",
+          relayNodes: ["Relay"],
+          targetNodes: ["Target"],
+        },
+      ],
+    };
+
+    const filteredOptions = buildGenerateOptionsFromConfig(config, { nodes });
+    const filtered = generateClashConfig(filteredOptions);
+    expect(filteredOptions.userConfig?.listenerPorts).toEqual(config.listenerPorts);
+    expect(filteredOptions.dialerProxyGroups?.[0]).toMatchObject({
+      relayNodes: ["Relay"],
+      targetNodes: ["Target"],
+    });
+    expect(filtered.proxies?.map((proxy) => proxy.name)).toEqual(["Relay"]);
+    expect(filtered.listeners).toEqual([
+      { name: "mixed0", type: "mixed", port: 12000, proxy: "Relay" },
+    ]);
+    expect(filtered["proxy-groups"]?.find((group) => group.name === "Chain")).toMatchObject({
+      proxies: ["Relay"],
+    });
+
+    const restored = generateClashConfig(
+      buildGenerateOptionsFromConfig(
+        {
+          ...config,
+          nodeNameFilter: {
+            ...config.nodeNameFilter,
+            enabled: false,
+          },
+        },
+        { nodes }
+      )
+    );
+    expect(restored.proxies?.map((proxy) => proxy.name)).toEqual(["Relay", "Target"]);
+    expect(restored.proxies?.find((proxy) => proxy.name === "Target")).toMatchObject({
+      "dialer-proxy": "Chain",
+    });
+    expect(restored.listeners).toEqual([
+      { name: "mixed0", type: "mixed", port: 12000, proxy: "Relay" },
+      { name: "mixed1", type: "mixed", port: 12001, proxy: "Target" },
+    ]);
+    expect(restored["proxy-groups"]?.find((group) => group.name === "Chain")).toMatchObject({
+      proxies: ["Relay"],
+    });
+  });
+
+  it("rejects invalid persisted node-name filters", () => {
+    expect(() =>
+      buildGenerateOptionsFromConfig(
+        {
+          nodeNameFilter: {
+            enabled: true,
+            excludeRegexes: ["(a+)+$"],
+          },
+        },
+        { nodes: [node()] }
+      )
+    ).toThrow("节点名称过滤配置无效");
   });
 
   it("drops malformed persisted config while keeping safe defaults", () => {

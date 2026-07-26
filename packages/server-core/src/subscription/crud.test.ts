@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { NodeNameFilterConfigError } from "@subboost/core/subscription/node-name-filter";
 import {
   areSubscriptionUrlListsEquivalent,
   normalizeSubscriptionConfigForPersistence,
@@ -97,6 +98,100 @@ describe("subscription CRUD shared helpers", () => {
         { existingConfig: { old: true }, defaultSmartNodeMatchingEnabled: true }
       )
     ).toEqual({ old: true, smartNodeMatchingEnabled: true });
+  });
+
+  it("strictly normalizes a persisted node name filter after config merge", () => {
+    expect(
+      normalizeSubscriptionConfigForPersistence(
+        { config: { theme: "light" } },
+        {
+          existingConfig: {
+            keep: true,
+            nodeNameFilter: {
+              enabled: true,
+              excludeRegexes: ["  expired  ", "", "expired", "Traffic"],
+            },
+          },
+        }
+      )
+    ).toEqual({
+      keep: true,
+      theme: "light",
+      nodeNameFilter: {
+        enabled: true,
+        excludeRegexes: ["expired", "Traffic"],
+      },
+    });
+  });
+
+  it("keeps node name filter absent for legacy configs", () => {
+    const merged = normalizeSubscriptionConfigForPersistence(
+      { config: { theme: "light" } },
+      { existingConfig: { keep: true } }
+    );
+    expect(merged).toEqual({ keep: true, theme: "light" });
+    expect(merged).not.toHaveProperty("nodeNameFilter");
+
+    const replaced = normalizeSubscriptionConfigForPersistence(
+      { config: { theme: "light" } },
+      {
+        existingConfig: {
+          nodeNameFilter: {
+            enabled: true,
+            excludeRegexes: ["expired"],
+          },
+        },
+        mergeExistingConfig: false,
+      }
+    );
+    expect(replaced).toEqual({ theme: "light" });
+    expect(replaced).not.toHaveProperty("nodeNameFilter");
+  });
+
+  it("rejects invalid node name filter syntax with structured line errors", () => {
+    try {
+      normalizeSubscriptionConfigForPersistence({
+        config: {
+          nodeNameFilter: {
+            enabled: true,
+            excludeRegexes: ["valid", "["],
+          },
+        },
+      });
+      throw new Error("Expected invalid node name filter syntax to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(NodeNameFilterConfigError);
+      expect((error as NodeNameFilterConfigError).errors).toEqual([
+        {
+          code: "invalid_regex",
+          line: 2,
+          message: "正则语法无效",
+        },
+      ]);
+    }
+  });
+
+  it("rejects unsafe node name filter regexes with structured line errors", () => {
+    try {
+      normalizeSubscriptionConfigForPersistence({
+        config: {
+          nodeNameFilter: {
+            enabled: true,
+            excludeRegexes: ["safe", "(a+)+$"],
+          },
+        },
+      });
+      throw new Error("Expected unsafe node name filter regex to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(NodeNameFilterConfigError);
+      expect((error as NodeNameFilterConfigError).errors).toEqual([
+        {
+          code: "unsafe_regex",
+          line: 2,
+          message: "正则可能导致运行时间过长",
+        },
+      ]);
+    }
   });
 
   it("serializes summary and detail response data", () => {

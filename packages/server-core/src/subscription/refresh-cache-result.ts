@@ -4,6 +4,7 @@ import {
   getEffectiveTestOptions,
 } from "@subboost/core/subscription/config-utils";
 import { buildProxyProvidersFromConfig } from "@subboost/core/subscription/proxy-providers";
+import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import type { ParsedNode } from "@subboost/core/types/node";
 import type { SubscriptionResponseInfo } from "@subboost/core/subscription/subscription-response-info";
 import type { RefreshNodeSnapshotResult } from "./refresh-node-snapshot";
@@ -48,10 +49,17 @@ export function prepareRefreshCacheResult(params: {
       testUrl,
       testInterval,
     });
+  const hasProxyProviders = Boolean(
+    proxyProviders && Object.keys(proxyProviders).length > 0
+  );
   const common = {
     proxyProviders,
     nodeCount: params.snapshot.nodes.length,
   };
+  const nodeNameFilterResult = resolveNodeNameFilter(
+    params.snapshot.nodes,
+    params.config.nodeNameFilter
+  );
 
   if (params.snapshot.refreshableSourceCount > 0 && params.snapshot.refreshedSourceCount === 0) {
     return {
@@ -61,19 +69,19 @@ export function prepareRefreshCacheResult(params: {
     };
   }
 
-  if (params.snapshot.nodes.length === 0 && !proxyProviders) {
-    return {
-      ok: false,
-      reason: "empty_result",
-      ...common,
-    };
-  }
-
   if (params.snapshot.nodes.length > params.maxNodesPerSubscription) {
     return {
       ok: false,
       reason: "node_quota_exceeded",
       maxNodesPerSubscription: params.maxNodesPerSubscription,
+      ...common,
+    };
+  }
+
+  if (nodeNameFilterResult.effectiveCount === 0 && !hasProxyProviders) {
+    return {
+      ok: false,
+      reason: "empty_result",
       ...common,
     };
   }

@@ -1,4 +1,5 @@
 import { stripImportedNodeControlFieldsFromList } from "@subboost/core/subscription/imported-node-controls";
+import { parseNodeNameFilterConfig } from "@subboost/core/subscription/node-name-filter";
 import { normalizeSubscriptionResponseInfo } from "@subboost/core/subscription/subscription-response-info";
 import { tryNormalizeSubscriptionUrlInput } from "@subboost/core/subscription/url-input";
 import type { ParsedNode } from "@subboost/core/types/node";
@@ -138,6 +139,10 @@ export function normalizeSubscriptionConfigForPersistence(
     } else {
       delete baseConfig.sources;
     }
+  }
+
+  if ("nodeNameFilter" in baseConfig) {
+    baseConfig.nodeNameFilter = parseNodeNameFilterConfig(baseConfig.nodeNameFilter);
   }
 
   if (typeof input.smartNodeMatchingEnabled === "boolean") {

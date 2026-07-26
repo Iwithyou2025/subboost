@@ -132,6 +132,20 @@ function buildLocalSubscriptionConfig(
   );
 }
 
+function assertNodeNameFilterKeepsOutput(
+  nodes: ParsedNode[],
+  config: Record<string, unknown>
+): void {
+  if (nodes.length === 0) return;
+  const options = buildGenerateOptionsFromConfig(config, { nodes });
+  const hasProxyProviders = Boolean(
+    options.proxyProviders && Object.keys(options.proxyProviders).length > 0
+  );
+  if (options.nodes.length === 0 && !hasProxyProviders) {
+    throw new Error("过滤后没有可用节点");
+  }
+}
+
 export function generateLocalSubscriptionToken(): string {
   return randomBytes(32).toString("base64url");
 }
@@ -193,6 +207,7 @@ export async function createSubscription(ownerId: string, body: unknown): Promis
   if (urls.length === 0 && nodes.length === 0) throw new Error("At least one URL or node is required.");
 
   const config = buildLocalSubscriptionConfig(body);
+  assertNodeNameFilterKeepsOutput(nodes, config);
   const autoUpdateInterval = normalizeLocalAutoUpdateIntervalSeconds(body.autoUpdateInterval);
   const subscriptionInfo = normalizeSubscriptionInfoForPersistence(body.subscriptionInfo) ?? {};
 
@@ -224,6 +239,7 @@ export async function updateSubscription(ownerId: string, id: string, body: unkn
   const hasNodes = "nodes" in body;
   const hasConfig = "config" in body || "smartNodeMatchingEnabled" in body;
   const nextNodes = hasNodes ? validateLocalSubscriptionNodes(body.nodes) : currentSecrets.nodes;
+  let nextConfig = currentSecrets.config;
 
   if (hasUrls) {
     data.encryptedUrls = encryptJson(normalizeSubscriptionUrlList(body.urls));
@@ -232,8 +248,8 @@ export async function updateSubscription(ownerId: string, id: string, body: unkn
     data.encryptedNodes = encryptJson(nextNodes);
   }
   if (hasConfig) {
-    const config = buildLocalSubscriptionConfig(body, currentSecrets.config);
-    data.encryptedConfig = encryptJson(config);
+    nextConfig = buildLocalSubscriptionConfig(body, currentSecrets.config);
+    data.encryptedConfig = encryptJson(nextConfig);
   }
   if ("subscriptionInfo" in body) {
     data.encryptedSubscriptionInfo = encryptJson(normalizeSubscriptionInfoForPersistence(body.subscriptionInfo) ?? {});
@@ -244,6 +260,7 @@ export async function updateSubscription(ownerId: string, id: string, body: unkn
     if (nextUrls.length === 0 && nextNodes.length === 0) {
       throw new Error("At least one URL or node is required.");
     }
+    assertNodeNameFilterKeepsOutput(nextNodes, nextConfig);
   }
 
   let resetAutoUpdateState = false;

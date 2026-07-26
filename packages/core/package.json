@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "js-yaml": "^4.3.0",
-    "peggy": "^5.1.0"
+    "peggy": "^5.1.0",
+    "safe-regex2": "^5.1.1"
   }
 }

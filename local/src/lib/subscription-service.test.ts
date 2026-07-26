@@ -350,6 +350,51 @@ describe("local subscription service", () => {
     ).rejects.toThrow("Node count cannot exceed 10000");
   });
 
+  it("validates node filters and permits provider-only output on create", async () => {
+    await expect(
+      createSubscription("owner-1", {
+        name: "Invalid filter",
+        nodes: [node("套餐到期提醒")],
+        config: {
+          nodeNameFilter: { enabled: true, excludeRegexes: ["("] },
+        },
+      })
+    ).rejects.toThrow("节点名称过滤配置无效");
+
+    mocks.buildGenerateOptionsFromConfig.mockReturnValueOnce({ nodes: [] });
+    await expect(
+      createSubscription("owner-1", {
+        name: "Empty filter result",
+        nodes: [node("套餐到期提醒")],
+        config: {
+          nodeNameFilter: { enabled: true, excludeRegexes: ["套餐到期"] },
+        },
+      })
+    ).rejects.toThrow("过滤后没有可用节点");
+
+    mocks.buildGenerateOptionsFromConfig.mockReturnValueOnce({
+      nodes: [],
+      proxyProviders: { provider: { type: "http" } },
+    });
+    await expect(
+      createSubscription("owner-1", {
+        name: "Provider output",
+        nodes: [node("套餐到期提醒")],
+        config: {
+          sources: [
+            {
+              id: "provider",
+              type: "url",
+              content: "https://provider.example/sub",
+              useProxyProviders: true,
+            },
+          ],
+          nodeNameFilter: { enabled: true, excludeRegexes: ["套餐到期"] },
+        },
+      })
+    ).resolves.toMatchObject({ name: "Created" });
+  });
+
   it("updates subscriptions and preserves existing values when fields are omitted", async () => {
     await expect(updateSubscription("owner-1", "missing", { name: "A" })).resolves.toMatchObject({ id: "sub-1" });
 
@@ -416,6 +461,20 @@ describe("local subscription service", () => {
         disabledPreviousInterval: null,
       },
     });
+  });
+
+  it("rejects updates whose filter removes every ordinary node", async () => {
+    mocks.buildGenerateOptionsFromConfig.mockReturnValueOnce({ nodes: [] });
+
+    await expect(
+      updateSubscription("owner-1", "sub-1", {
+        nodes: [node("套餐到期提醒")],
+        config: {
+          nodeNameFilter: { enabled: true, excludeRegexes: ["套餐到期"] },
+        },
+      })
+    ).rejects.toThrow("过滤后没有可用节点");
+    expect(mocks.prisma.subscription.update).not.toHaveBeenCalled();
   });
 
   it("replaces submitted config instead of retaining omitted stale fields", async () => {
