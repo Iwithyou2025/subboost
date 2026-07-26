@@ -40,6 +40,33 @@ describe("composed form controls", () => {
     expect(html).toContain('aria-invalid="true"');
     expect(html).toContain('aria-required="true"');
     expect(html).toContain('role="alert"');
+    expect(html.indexOf("账号")).toBeLessThan(html.indexOf("<input"));
+    expect(html.indexOf("<input")).toBeLessThan(html.indexOf("用于登录"));
+  });
+
+  it("can place compact helper text between the label and control", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        FormField,
+        {
+          id: "exclude-regex",
+          label: "排除正则",
+          description: "每行一条，按节点导入时的原始名称匹配。",
+          descriptionPlacement: "before-control",
+        },
+        React.createElement(Input)
+      )
+    );
+    const labelIndex = html.indexOf("排除正则");
+    const descriptionIndex = html.indexOf(
+      "每行一条，按节点导入时的原始名称匹配。"
+    );
+    const controlIndex = html.indexOf("<input");
+
+    expect(labelIndex).toBeGreaterThanOrEqual(0);
+    expect(descriptionIndex).toBeGreaterThan(labelIndex);
+    expect(controlIndex).toBeGreaterThan(descriptionIndex);
+    expect(html).toContain('aria-describedby="exclude-regex-description"');
   });
 
   it("renders a disabled, labelled switch with its description", () => {
