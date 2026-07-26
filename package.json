@@ -15,7 +15,8 @@
     "build": "npm --workspace @subboost/local run build",
     "test:unit": "vitest run",
     "test:core": "vitest run --config vitest.core.config.ts",
-    "lint": "eslint local packages --max-warnings=0",
+    "lint": "eslint local packages --max-warnings=0 && npm run check:ui-consistency",
+    "check:ui-consistency": "node scripts/check-ui-consistency.cjs packages local",
     "check:local-app": "npm --prefix local run check",
     "local:db:generate": "npm --prefix local run db:generate",
     "local:lint": "npm --prefix local run lint",
@@ -23,9 +24,8 @@
     "local:build": "npm --prefix local run build"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
-    "@radix-ui/react-accordion": "^1.2.0",
+    "@prisma/adapter-pg": "^7.9.0",
+    "@prisma/client": "^7.9.0",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.0",
@@ -33,7 +33,6 @@
     "@radix-ui/react-popover": "^1.1.0",
     "@radix-ui/react-scroll-area": "^1.2.0",
     "@radix-ui/react-select": "^2.1.0",
-    "@radix-ui/react-separator": "^1.1.0",
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-switch": "^1.1.0",
     "@radix-ui/react-tabs": "^1.1.0",
@@ -47,9 +46,9 @@
     "clsx": "^2.1.0",
     "dotenv": "^17.4.2",
     "jose": "^6.2.3",
-    "js-yaml": "^4.2.0",
+    "js-yaml": "^4.3.0",
     "lucide-react": "^1.17.0",
-    "next": "^16.2.7",
+    "next": "^16.2.12",
     "peggy": "^5.1.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -64,16 +63,17 @@
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.7",
-    "postcss": "8.5.15",
-    "prisma": "^7.8.0",
+    "eslint-config-next": "^16.2.12",
+    "postcss": "8.5.23",
+    "prisma": "^7.9.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
   },
   "overrides": {
-    "@hono/node-server": "1.19.13",
-    "hono": "4.12.25",
-    "postcss": "8.5.15"
+    "find-my-way": "9.7.0",
+    "postcss": "8.5.23",
+    "sharp": "0.35.3",
+    "valibot": "1.4.2"
   }
 }

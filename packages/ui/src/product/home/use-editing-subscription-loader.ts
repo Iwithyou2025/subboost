@@ -15,6 +15,10 @@ import {
   normalizeSubscriptionUserInfo,
   type SubscriptionUserInfo,
 } from "@subboost/core/subscription/subscription-userinfo";
+import {
+  normalizeNodeNameFilterConfig,
+  type NodeNameFilterConfig,
+} from "@subboost/core/subscription/node-name-filter";
 import { useConfigStore } from "@subboost/ui/store/config-store";
 import { captureAuthConfigHandoff } from "@subboost/ui/store/config-store/auth-handoff";
 import { toast } from "@subboost/ui/components/ui/toaster";
@@ -486,6 +490,8 @@ export function useEditingSubscriptionLoader({
           typeof cfg.appliedTemplateId === "string" && cfg.appliedTemplateId.trim()
             ? (cfg.appliedTemplateId as string)
             : null;
+        const nodeNameFilterFromCfg: NodeNameFilterConfig =
+          normalizeNodeNameFilterConfig(cfg.nodeNameFilter);
         const proxyGroupAdvancedModeEnabledFromCfg = resolveProxyGroupAdvancedModeEnabled({
           proxyGroupAdvancedModeEnabled: (cfg as any).proxyGroupAdvancedModeEnabled,
           customProxyGroups: customProxyGroupsFromCfg,
@@ -535,6 +541,7 @@ export function useEditingSubscriptionLoader({
           ruleOrder: ruleOrderFromCfg.length > 0 ? ruleOrderFromCfg : state.ruleOrder,
           listenerPorts: listenerPortsFromCfg,
           appliedTemplateId: appliedTemplateIdFromCfg ?? state.appliedTemplateId,
+          nodeNameFilter: nodeNameFilterFromCfg,
           dnsYaml: typeof cfg.dnsYaml === "string" ? (cfg.dnsYaml as string) : state.dnsYaml,
           ruleProviderBaseUrl:
             typeof cfg.ruleProviderBaseUrl === "string" ? (cfg.ruleProviderBaseUrl as string) : state.ruleProviderBaseUrl,

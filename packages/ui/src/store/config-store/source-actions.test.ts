@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import type { ParsedNode } from "@subboost/core/types/node";
 import type { SubscriptionSource } from "./definitions";
 import {
@@ -12,6 +13,20 @@ import {
 } from "./source-actions.test-utils";
 
 const mocks = getSourceActionMocks();
+
+type DeferredFetchResult = {
+  content: string;
+  headers: Record<string, string>;
+  parseResult: ReturnType<typeof parseResult>;
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 describe("createSourceActions", () => {
   beforeEach(resetSourceActionMocks);
@@ -86,6 +101,7 @@ describe("createSourceActions", () => {
     const { actions, getState } = createHarness({
       nodes: [node("Existing", { server: "same.example.com" })],
       deletedNodeNames: ["Gone"],
+      nodeNameFilter: { enabled: true, excludeRegexes: ["fresh"] },
     });
 
     actions.parseContent("ss://content");
@@ -95,6 +111,14 @@ describe("createSourceActions", () => {
     expect(getState().nodes[0]).toMatchObject({ _originName: "Existing" });
     expect(getState().nodes[1]).toMatchObject({ _originName: "Fresh" });
     expect(getState().parseErrors).toEqual(["minor warning"]);
+    expect(getState().nodeNameFilter).toEqual({
+      enabled: true,
+      excludeRegexes: ["fresh"],
+    });
+    expect(
+      resolveNodeNameFilter(getState().nodes, getState().nodeNameFilter)
+        .effectiveNodes.map((item) => item.name)
+    ).toEqual(["Existing"]);
   });
 
   it("marks invalid parse content errors without changing nodes", () => {
@@ -231,6 +255,7 @@ describe("createSourceActions", () => {
           nameTemplate: "{tag}-{name}",
         }),
       ],
+      nodeNameFilter: { enabled: true, excludeRegexes: ["^remote node$"] },
     });
 
     await actions.parseSingleSource("s1");
@@ -239,6 +264,14 @@ describe("createSourceActions", () => {
     expect(getState().nodes[0]).toMatchObject({
       _originName: "Remote Node",
       _sourceIds: ["s1"],
+    });
+    expect(
+      resolveNodeNameFilter(getState().nodes, getState().nodeNameFilter)
+        .effectiveNodes
+    ).toEqual([]);
+    expect(getState().nodeNameFilter).toEqual({
+      enabled: true,
+      excludeRegexes: ["^remote node$"],
     });
     expect(getState().parseErrors).toEqual(["remote warning"]);
     expect(getState().sources[0]).toMatchObject({
@@ -537,6 +570,63 @@ describe("createSourceActions", () => {
       }),
       expect.objectContaining({ id: "s2" }),
     ]);
+  });
+
+  it("discards a pending single-source result after its input fingerprint changes", async () => {
+    const pending = deferred<DeferredFetchResult>();
+    mocks.fetchUrlContentInBrowser.mockReturnValueOnce(pending.promise);
+    const original = source({ id: "s1", type: "url", content: "https://example.com/old" });
+    const { actions, getState } = createHarness({ sources: [original] });
+
+    const running = actions.parseSingleSource("s1");
+    actions.setSources([
+      { ...getState().sources[0], content: "https://example.com/new", userinfoUserAgent: "new-agent" },
+    ]);
+    pending.resolve({ content: "old", headers: {}, parseResult: parseResult([node("Old")]) });
+    await running;
+
+    expect(getState().nodes).toEqual([]);
+    expect(getState().sources[0]).toMatchObject({
+      content: "https://example.com/new",
+      userinfoUserAgent: "new-agent",
+      parsing: false,
+    });
+    expect(getState().sources[0].parsed).not.toBe(true);
+  });
+
+  it("discards a pending single-source result after the source is deleted", async () => {
+    const pending = deferred<DeferredFetchResult>();
+    mocks.fetchUrlContentInBrowser.mockReturnValueOnce(pending.promise);
+    const { actions, getState } = createHarness({
+      sources: [source({ id: "s1", type: "url", content: "https://example.com/sub" })],
+    });
+
+    const running = actions.parseSingleSource("s1");
+    actions.setSources([]);
+    pending.resolve({ content: "old", headers: {}, parseResult: parseResult([node("Deleted")]) });
+    await running;
+
+    expect(getState().sources).toEqual([]);
+    expect(getState().nodes).toEqual([]);
+  });
+
+  it("keeps the newest result when two single-source imports finish in reverse order", async () => {
+    const first = deferred<DeferredFetchResult>();
+    const second = deferred<DeferredFetchResult>();
+    mocks.fetchUrlContentInBrowser.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { actions, getState } = createHarness({
+      sources: [source({ id: "s1", type: "url", content: "https://example.com/sub" })],
+    });
+
+    const olderRun = actions.parseSingleSource("s1");
+    const newerRun = actions.parseSingleSource("s1");
+    second.resolve({ content: "new", headers: {}, parseResult: parseResult([node("New")]) });
+    await newerRun;
+    first.resolve({ content: "old", headers: {}, parseResult: parseResult([node("Old")]) });
+    await olderRun;
+
+    expect(getState().nodes.map((item: ParsedNode) => item.name)).toEqual(["New"]);
+    expect(getState().sources[0]).toMatchObject({ parsed: true, parsing: false, nodeCount: 1 });
   });
 
 });

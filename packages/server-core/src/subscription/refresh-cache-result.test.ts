@@ -79,12 +79,88 @@ describe("prepareRefreshCacheResult", () => {
     expect(providerOnly.nodeCount).toBe(0);
     expect(providerOnly.generatedYaml).toContain("proxy-providers:");
     expect(providerOnly.cacheEntry.nodes).toEqual([]);
+
+    expect(
+      prepareRefreshCacheResult({
+        config: {},
+        snapshot: snapshot({ nodes: [] }),
+        maxNodesPerSubscription: 10,
+        proxyProviders: {},
+      })
+    ).toMatchObject({
+      ok: false,
+      reason: "empty_result",
+    });
+  });
+
+  it("keeps the raw cache snapshot but rejects refreshes with no effective nodes", () => {
+    const filtered = prepareRefreshCacheResult({
+      config: {
+        nodeNameFilter: {
+          enabled: true,
+          excludeRegexes: ["^node-a$"],
+        },
+      },
+      snapshot: snapshot({ nodes: [node] }),
+      maxNodesPerSubscription: 10,
+    });
+
+    expect(filtered).toMatchObject({
+      ok: false,
+      reason: "empty_result",
+      nodeCount: 1,
+    });
+  });
+
+  it("allows provider output when all raw nodes are excluded and caches the raw snapshot", () => {
+    const filtered = prepareRefreshCacheResult({
+      config: {
+        nodeNameFilter: {
+          enabled: true,
+          excludeRegexes: ["^node-a$"],
+        },
+      },
+      snapshot: snapshot({ nodes: [node] }),
+      maxNodesPerSubscription: 10,
+      proxyProviders: {
+        remote: {
+          type: "http",
+          url: "https://provider.example.com/sub.yaml",
+          path: "./remote.yaml",
+        },
+      },
+    });
+
+    expect(filtered.ok).toBe(true);
+    if (!filtered.ok) return;
+    expect(filtered.nodeCount).toBe(1);
+    expect(filtered.cacheEntry.nodes).toEqual([node]);
+    expect(filtered.generatedYaml).toContain("proxy-providers:");
+    expect(filtered.generatedYaml).not.toContain("node-a.example.com");
   });
 
   it("enforces node quota before generating YAML", () => {
     expect(
       prepareRefreshCacheResult({
         config: {},
+        snapshot: snapshot({ nodes: [node, { ...node, name: "node-b" }] }),
+        maxNodesPerSubscription: 1,
+      })
+    ).toMatchObject({
+      ok: false,
+      reason: "node_quota_exceeded",
+      nodeCount: 2,
+      maxNodesPerSubscription: 1,
+    });
+
+    expect(
+      prepareRefreshCacheResult({
+        config: {
+          nodeNameFilter: {
+            enabled: true,
+            excludeRegexes: [".*"],
+          },
+        },
         snapshot: snapshot({ nodes: [node, { ...node, name: "node-b" }] }),
         maxNodesPerSubscription: 1,
       })
@@ -124,5 +200,20 @@ describe("prepareRefreshCacheResult", () => {
         total: 3,
       },
     });
+  });
+
+  it("rejects invalid persisted filters before publishing refresh output", () => {
+    expect(() =>
+      prepareRefreshCacheResult({
+        config: {
+          nodeNameFilter: {
+            enabled: true,
+            excludeRegexes: ["(a+)+$"],
+          },
+        },
+        snapshot: snapshot(),
+        maxNodesPerSubscription: 10,
+      })
+    ).toThrow("节点名称过滤配置无效");
   });
 });

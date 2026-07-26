@@ -51,6 +51,7 @@ function meaningfulState(overrides: Record<string, unknown> = {}) {
       },
     ],
     nodes: [{ name: "Node A" }],
+    nodeNameFilter: { enabled: true, excludeRegexes: ["expire", "test"] },
     deletedNodeNames: ["Gone"],
     deletedNodes: [{ originName: "Gone", name: "Gone" }],
     customRules: [{ id: "rule-1", type: "DOMAIN", value: "example.com", target: "Proxy" }],
@@ -142,6 +143,7 @@ describe("auth config handoff", () => {
         }),
       ],
       nodes: [{ name: "Node A" }],
+      nodeNameFilter: { enabled: true, excludeRegexes: ["expire", "test"] },
       deletedNodeNames: ["Gone"],
       deletedNodes: [{ originName: "Gone", name: "Gone" }],
       template: "full",
@@ -243,6 +245,10 @@ describe("auth config handoff", () => {
         state: {
           sources: [{ id: "bad", type: "bad", content: "x" }],
           nodes: [{ name: "Node" }, "bad"],
+          nodeNameFilter: {
+            enabled: true,
+            excludeRegexes: ["  expire  ", "expire", "", 42],
+          },
           deletedNodeNames: ["Gone", 1],
           deletedNodes: [{ originName: "Gone" }],
           template: "bad",
@@ -284,6 +290,7 @@ describe("auth config handoff", () => {
     const consumed = consumeAuthConfigHandoff();
 
     expect(consumed).toEqual({
+      nodeNameFilter: { enabled: false, excludeRegexes: [] },
       deletedNodeNames: ["Gone"],
       deletedNodes: [{ originName: "Gone" }],
       enabledProxyGroups: ["select"],
@@ -341,6 +348,7 @@ describe("auth config handoff", () => {
 
     expect(consumed).toEqual({
       sources: [{ id: "source-1", type: "url", content: "https://example.com/sub" }],
+      nodeNameFilter: { enabled: false, excludeRegexes: [] },
     });
   });
 });

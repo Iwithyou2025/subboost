@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ArrowRight, Check, Pencil, Trash2, X } from "lucide-react";
 import { Button } from "@subboost/ui/components/ui/button";
+import { IconButton } from "@subboost/ui/components/ui/icon-button";
 import { Input } from "@subboost/ui/components/ui/input";
 import {
   Select,
@@ -20,7 +21,7 @@ import {
   CUSTOM_RULE_TYPES,
 } from "@subboost/core/rules/custom-rule-utils";
 import { useConfigStore } from "@subboost/ui/store/config-store";
-import type { CustomRule } from "@subboost/core/types/config";
+import type { CustomProxyGroup, CustomRule, ProxyGroupRuleTarget } from "@subboost/core/types/config";
 import {
   useProductInteractionAdapter,
   type ProductRuleKind,
@@ -86,6 +87,20 @@ function getTargetOptions(enabledGroupNames: string[], selected?: string) {
   const options = ["DIRECT", "REJECT", ...enabledGroupNames];
   if (selected && !options.includes(selected)) options.push(selected);
   return Array.from(new Set(options));
+}
+
+function toStableRuleTarget(
+  targetName: string,
+  moduleNames: Record<string, string>,
+  customProxyGroups: CustomProxyGroup[],
+): ProxyGroupRuleTarget {
+  const normalized = targetName.trim();
+  for (const [id, name] of Object.entries(moduleNames)) {
+    if (name.trim() === normalized) return { kind: "module", id };
+  }
+  const customGroup = customProxyGroups.find((group) => group.name.trim() === normalized);
+  if (customGroup) return { kind: "custom", id: customGroup.id };
+  return normalized;
 }
 
 export function ProxyGroupsCustomRules() {
@@ -174,7 +189,7 @@ export function ProxyGroupsCustomRules() {
       id: createCustomRuleId(),
       type: addedRuleType,
       value,
-      target: newRuleTarget,
+      target: toStableRuleTarget(newRuleTarget, moduleNames, customProxyGroups),
       noResolve: newRuleNoResolve,
     });
     interactions.ruleAdded?.({
@@ -213,7 +228,7 @@ export function ProxyGroupsCustomRules() {
     updateCustomRule(editingRuleId, {
       type: editingRuleDraft.type,
       value,
-      target: editingRuleDraft.target,
+      target: toStableRuleTarget(resolveTargetName(editingRuleDraft.target), moduleNames, customProxyGroups),
       noResolve: Boolean(editingRuleDraft.noResolve),
     });
     cancelEditingRule();
@@ -245,7 +260,14 @@ export function ProxyGroupsCustomRules() {
         defaultNoResolve={newRuleNoResolve}
         targetOptions={batchTargetOptions}
         existingRules={customRules}
-        onImport={addCustomRules}
+        onImport={(rules) =>
+          addCustomRules(
+            rules.map((rule) => ({
+              ...rule,
+              target: toStableRuleTarget(resolveTargetName(rule.target), moduleNames, customProxyGroups),
+            })),
+          )
+        }
       />
 
       <div className={RULE_ADD_ROW_FRAME_CLASS}>
@@ -294,6 +316,7 @@ export function ProxyGroupsCustomRules() {
             </Select>
             <div className="flex h-7 shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2">
               <Switch
+                aria-label="新规则不解析域名"
                 checked={newRuleNoResolve}
                 onCheckedChange={setNewRuleNoResolve}
               />
@@ -408,6 +431,7 @@ export function ProxyGroupsCustomRules() {
                       </Select>
                       <div className="flex h-7 shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2">
                         <Switch
+                          aria-label="编辑规则时不解析域名"
                           checked={Boolean(editingRuleDraft.noResolve)}
                           onCheckedChange={(noResolve) =>
                             setEditingRuleDraft((prev) =>
@@ -492,22 +516,24 @@ export function ProxyGroupsCustomRules() {
                   {ruleTargetName}
                 </span>
                 <div className="ml-auto flex shrink-0 items-center gap-0.5">
-                  <button
+                  <IconButton
+                    label="编辑规则"
+                    variant="ghost"
                     type="button"
                     onClick={() => startEditingRule(rule)}
                     className="inline-flex h-5 w-5 items-center justify-center rounded-md text-white/35 transition-colors hover:bg-white/10 hover:text-white/80"
-                    title="编辑规则"
                   >
                     <Pencil className="h-3 w-3" />
-                  </button>
-                  <button
+                  </IconButton>
+                  <IconButton
+                    label="删除规则"
+                    variant="ghost"
                     type="button"
                     onClick={() => removeCustomRule(index)}
                     className="inline-flex h-5 w-5 items-center justify-center rounded-md text-white/30 transition-colors hover:bg-red-500/10 hover:text-red-300"
-                    title="删除规则"
                   >
                     <Trash2 className="h-3 w-3" />
-                  </button>
+                  </IconButton>
                 </div>
               </div>
             );

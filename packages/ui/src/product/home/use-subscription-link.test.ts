@@ -106,6 +106,7 @@ describe("useSubscriptionLink", () => {
       proxyGroupAdvanced: { auto: { includeRegex: "Fast" } },
       proxyGroupAdvancedModeEnabled: true,
       proxyGroupOrder: ["select", "auto"],
+      nodeNameFilter: { enabled: false, excludeRegexes: [] },
     };
     originalWindow = globalThis.window;
     originalNavigator = globalThis.navigator;
@@ -260,6 +261,7 @@ describe("useSubscriptionLink", () => {
             proxyGroupAdvancedModeEnabled: true,
             listenerPorts: { "Node A": 41000 },
             proxyGroupOrder: ["select", "auto"],
+            nodeNameFilter: { enabled: false, excludeRegexes: [] },
           }),
         }),
       })
@@ -362,6 +364,10 @@ describe("useSubscriptionLink", () => {
 
   it("persists resolved per-source subscription info for one source among multiple imports", async () => {
     const adapter = makeAdapter();
+    mocks.bag.storeState.nodeNameFilter = {
+      enabled: true,
+      excludeRegexes: ["^剩余流量", "^套餐流量", "^套餐到期"],
+    };
     const storeSources = [
       {
         id: "source-1",
@@ -416,6 +422,11 @@ describe("useSubscriptionLink", () => {
       download: 0,
       total: 10 * 1024 ** 3,
       expire: 1893499200,
+    });
+    expect(payload.nodes).toEqual(nodes);
+    expect(payload.config.nodeNameFilter).toEqual({
+      enabled: true,
+      excludeRegexes: ["^剩余流量", "^套餐流量", "^套餐到期"],
     });
     expect(payload.config.sources).toEqual([
       expect.objectContaining({

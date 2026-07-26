@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
 import { Badge } from "@subboost/ui/components/ui/badge";
+import { Button } from "@subboost/ui/components/ui/button";
 import { confirmDialog } from "@subboost/ui/components/ui/confirm-dialog";
 import { Switch } from "@subboost/ui/components/ui/switch";
 import {
@@ -25,6 +26,7 @@ import {
 import type { HiddenPresetRuleIds } from "@subboost/core/generator/module-rules";
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
 import { resolveProxyGroupTargetName } from "@subboost/core/proxy-group-targets";
+import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import { useConfigStore, type RuleSetDraft } from "@subboost/ui/store/config-store";
 import {
   buildManualRuleTargets,
@@ -43,6 +45,7 @@ export function ProxyGroupsCategories() {
   const {
     ruleProviderBaseUrl,
     nodes = [],
+    nodeNameFilter,
     testUrl,
     testInterval,
     cnIpNoResolve,
@@ -81,6 +84,10 @@ export function ProxyGroupsCategories() {
     Set<string>
   >(new Set(customProxyGroups.length > 0 ? [CUSTOM_CATEGORY_ID] : []));
   const didApplyCustomCategoryDefault = React.useRef(customProxyGroups.length > 0);
+  const effectiveNodes = React.useMemo(
+    () => resolveNodeNameFilter(nodes, nodeNameFilter).effectiveNodes,
+    [nodeNameFilter, nodes],
+  );
   const [editingModuleId, setEditingModuleId] = React.useState<string | null>(
     null,
   );
@@ -158,9 +165,9 @@ export function ProxyGroupsCategories() {
     return grouped;
   }, [hiddenProxyGroups]);
   const generatedProxyGroupNodeCounts = React.useMemo(() => {
-    if (nodes.length === 0) return new Map<string, number>();
+    if (effectiveNodes.length === 0) return new Map<string, number>();
     const generated = generateProxyGroups({
-      nodes,
+      nodes: effectiveNodes,
       enabledModules: enabledProxyGroups,
       ruleProviderBaseUrl,
       testUrl,
@@ -171,7 +178,7 @@ export function ProxyGroupsCategories() {
       builtinRuleEdits,
       proxyGroupNameOverrides,
     });
-    const nodeNameSet = new Set(nodes.map((node) => node.name));
+    const nodeNameSet = new Set(effectiveNodes.map((node) => node.name));
     return new Map(
       generated.map((group) => [
         group.name,
@@ -186,7 +193,7 @@ export function ProxyGroupsCategories() {
       ]),
     );
   }, [
-    nodes,
+    effectiveNodes,
     enabledProxyGroups,
     ruleProviderBaseUrl,
     testUrl,
@@ -301,7 +308,7 @@ export function ProxyGroupsCategories() {
       <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3">
         <div className="min-w-0 space-y-1">
           <div className={PROXY_GROUP_SECTION_LABEL_ROW_CLASS}>
-            <label className={PROXY_GROUP_SECTION_LABEL_CLASS}>规则集 URL</label>
+            <p className={PROXY_GROUP_SECTION_LABEL_CLASS}>规则集 URL</p>
           </div>
           <div
             className="min-w-0 rounded-md border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-white/65"
@@ -312,31 +319,33 @@ export function ProxyGroupsCategories() {
         </div>
         <div className="min-w-0 space-y-1">
           <div className={PROXY_GROUP_SECTION_LABEL_ROW_CLASS}>
-            <label className="text-xs text-amber-300">高级模式</label>
+            <p className="text-xs text-amber-300">高级模式</p>
           </div>
           <div className="flex h-9 w-full items-center justify-center gap-1 rounded-md border border-white/10 bg-white/5 px-2">
             <span className="text-[10px] text-white/65">
               {proxyGroupAdvancedModeEnabled ? "已开启" : "未开启"}
             </span>
-            <Switch checked={proxyGroupAdvancedModeEnabled} onCheckedChange={setProxyGroupAdvancedModeEnabled} />
+            <Switch checked={proxyGroupAdvancedModeEnabled} onCheckedChange={setProxyGroupAdvancedModeEnabled} aria-label="高级模式" />
           </div>
         </div>
       </div>
 
       <div className="space-y-1">
         <div className={PROXY_GROUP_SECTION_LABEL_ROW_CLASS}>
-          <label className={PROXY_GROUP_SECTION_LABEL_CLASS}>分流规则组</label>
+          <p className={PROXY_GROUP_SECTION_LABEL_CLASS}>分流规则组</p>
           {hiddenModules.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
+                <Button
                   type="button"
-                  className="ml-auto inline-flex h-6 items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 text-[10px] text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto h-6 gap-1 rounded-md px-2 text-[10px] text-white/60 hover:bg-white/10 hover:text-white/85"
                   title="恢复隐藏分组"
                 >
                   <RotateCcw className="h-3 w-3" />
                   已隐藏 {hiddenModules.length}
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="text-xs">恢复隐藏分组</DropdownMenuLabel>
@@ -582,8 +591,8 @@ export function ProxyGroupsCategories() {
                               onMoveRule={(ruleId, target) =>
                                 moveModuleRule(module.id, ruleId, target)
                               }
-                              onMoveManualRule={(ruleId, targetName) =>
-                                updateCustomRule(ruleId, { target: targetName })
+                              onMoveManualRule={(ruleId, target) =>
+                                updateCustomRule(ruleId, { target: { kind: target.kind, id: target.id } })
                               }
                               onRemoveManualRule={removeCustomRule}
                               onRestoreRule={(ruleId) =>

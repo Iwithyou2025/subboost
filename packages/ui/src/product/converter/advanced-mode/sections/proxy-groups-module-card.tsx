@@ -1,10 +1,16 @@
 "use client";
 
 import * as React from "react";
-import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, ChevronRight, HelpCircle, Pencil, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { Button } from "@subboost/ui/components/ui/button";
+import { IconButton } from "@subboost/ui/components/ui/icon-button";
 import { Input } from "@subboost/ui/components/ui/input";
+import {
+  Popover,
+  PopoverArrow,
+  PopoverContent,
+  PopoverTrigger,
+} from "@subboost/ui/components/ui/popover";
 import { Switch } from "@subboost/ui/components/ui/switch";
 import {
   getEffectiveModuleRuleItems,
@@ -17,7 +23,7 @@ import type { CustomProxyGroup, RuleSetDraft } from "@subboost/ui/store/config-s
 import { cn } from "@subboost/ui/lib/utils";
 import type {
   CustomRuleListItem,
-  ProxyGroupRuleTarget,
+  ProxyGroupRuleTargetOption,
 } from "./proxy-group-rule-targets";
 import { ProxyGroupsModuleRulesPanel } from "./proxy-groups-module-rules-panel";
 import {
@@ -38,20 +44,18 @@ function ModuleHintPopover({ moduleId }: { moduleId: string }) {
   const label = isGemini ? "Gemini 分流说明" : "谷歌学术分流说明";
 
   return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 transition-colors hover:bg-white/10 hover:text-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-          aria-label={label}
-          title={label}
+    <Popover>
+      <PopoverTrigger asChild>
+        <IconButton
+          label={label}
+          variant="ghost"
+          className="pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 transition-colors hover:bg-white/10 hover:text-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           onClick={(e) => e.stopPropagation()}
         >
           <HelpCircle className="h-3.5 w-3.5" />
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
+        </IconButton>
+      </PopoverTrigger>
+        <PopoverContent
           side="bottom"
           align="start"
           sideOffset={8}
@@ -86,10 +90,9 @@ function ModuleHintPopover({ moduleId }: { moduleId: string }) {
               </ul>
             </div>
           )}
-          <Popover.Arrow className="fill-white/10" />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+          <PopoverArrow className="fill-white/10" />
+        </PopoverContent>
+    </Popover>
   );
 }
 
@@ -163,7 +166,7 @@ export function ProxyGroupsModuleCard({
   hiddenPresetRuleIds: HiddenPresetRuleIds;
   customProxyGroups: CustomProxyGroup[];
   manualRules: CustomRuleListItem[];
-  manualRuleTargets: ProxyGroupRuleTarget[];
+  manualRuleTargets: ProxyGroupRuleTargetOption[];
   enabledProxyGroups: string[];
   hiddenProxyGroups: string[];
   proxyGroupNameOverrides: Record<string, string>;
@@ -176,7 +179,7 @@ export function ProxyGroupsModuleCard({
   onAddRuleToCustomGroup: (groupId: string, rule: RuleSetDraft) => void;
   onRemoveExtraRule: (ruleId: string) => void;
   onMoveRule: (ruleId: string, target: { kind: "module" | "custom"; id: string }) => void;
-  onMoveManualRule: (ruleId: string, targetName: string) => void;
+  onMoveManualRule: (ruleId: string, target: ProxyGroupRuleTargetOption) => void;
   onRemoveManualRule: (index: number) => void;
   onRestoreRule: (ruleId: string) => void;
   onResetRuleTarget: (ruleId: string) => void;
@@ -249,28 +252,39 @@ export function ProxyGroupsModuleCard({
     <div className="overflow-hidden rounded border border-white/10 bg-white/5">
       <div
         className={cn(
-          "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-2 py-2",
-          hasExpandedContent && "cursor-pointer transition-colors hover:bg-white/5"
+          "relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-2 py-2",
+          hasExpandedContent && !isEditing && "cursor-pointer"
         )}
-        onClick={() => {
-          if (hasExpandedContent) onToggleRulesExpanded();
-        }}
-        title={hasExpandedContent ? (isRulesExpanded ? "收起" : "展开") : undefined}
       >
+        {hasExpandedContent && !isEditing && (
+          <button
+            type="button"
+            className="absolute inset-0 z-0 cursor-pointer rounded-none transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/60"
+            aria-label={isRulesExpanded ? `收起 ${display.full}` : `展开 ${display.full}`}
+            aria-expanded={isRulesExpanded}
+            onClick={onToggleRulesExpanded}
+            title={isRulesExpanded ? "收起" : "展开"}
+          />
+        )}
         {!isEditing && (hasExpandedContent ? (
           isRulesExpanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-white/50" />
+            <ChevronDown className="pointer-events-none relative z-10 h-4 w-4 shrink-0 text-white/50" aria-hidden="true" />
           ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-white/50" />
+            <ChevronRight className="pointer-events-none relative z-10 h-4 w-4 shrink-0 text-white/50" aria-hidden="true" />
           )
         ) : (
           <span className="h-4 w-4 shrink-0" />
         ))}
-        <div className={cn("min-w-0", isEditing && "col-span-3")}>
+        <div
+          className={cn(
+            "min-w-0",
+            isEditing && "col-span-3",
+            hasExpandedContent && !isEditing && "pointer-events-none relative z-10",
+          )}
+        >
           {isEditing ? (
             <div
               className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1"
-              onClick={(e) => e.stopPropagation()}
             >
               <div
                 className={cn(
@@ -336,7 +350,7 @@ export function ProxyGroupsModuleCard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 px-2"
+                      className="pointer-events-auto h-7 px-2"
                       onClick={(e) => {
                         e.stopPropagation();
                         onStartEditing();
@@ -359,10 +373,12 @@ export function ProxyGroupsModuleCard({
         </div>
 
         {!isEditing && (
-          <div className="flex shrink-0 items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="pointer-events-none relative z-10 flex shrink-0 items-center justify-end gap-2">
             <Switch
+              aria-label={`启用 ${display.full} 分流组`}
               checked={isEnabled}
               onCheckedChange={onToggleEnabled}
+              className="pointer-events-auto"
               onClick={(e) => e.stopPropagation()}
             />
             {onChangeGroupType && (
@@ -376,7 +392,7 @@ export function ProxyGroupsModuleCard({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 shrink-0 px-2 text-white/35 hover:text-indigo-200"
+                    className="pointer-events-auto h-7 shrink-0 px-2 text-white/35 hover:text-indigo-200"
                     title={`类型：${typeLabel}`}
                     aria-label={`修改 ${display.full} 类型`}
                   >
@@ -388,7 +404,7 @@ export function ProxyGroupsModuleCard({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 shrink-0 px-2 text-white/30 hover:text-red-400"
+              className="pointer-events-auto h-7 shrink-0 px-2 text-white/30 hover:text-red-400"
               onClick={(e) => {
                 e.stopPropagation();
                 onHide();

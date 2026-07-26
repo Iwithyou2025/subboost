@@ -268,7 +268,8 @@ describe("ProxyGroupsCategories", () => {
     expect(html).toContain("grid-cols-[minmax(0,1fr)_96px]");
     expect(html).not.toContain("md:grid-cols-[minmax(0,1fr)_96px]");
     expect(html).toContain("min-w-0 space-y-1");
-    expect(html).toContain("h-9 w-full");
+    expect(html).toContain("text-xs text-amber-300");
+    expect(html).toContain('aria-label="高级模式"');
     expect(mocks.store.setRuleProviderBaseUrl).not.toHaveBeenCalled();
 
     expect(mocks.captures.moduleCards).toHaveLength(1);
@@ -318,8 +319,10 @@ describe("ProxyGroupsCategories", () => {
     expect(mocks.store.removeModuleRule).toHaveBeenCalledWith("auto", "rule-a");
     card.onMoveRule("rule-a", "top");
     expect(mocks.store.moveModuleRule).toHaveBeenCalledWith("auto", "rule-a", "top");
-    card.onMoveManualRule("manual-1", "Fallback");
-    expect(mocks.store.updateCustomRule).toHaveBeenCalledWith("manual-1", { target: "Fallback" });
+    card.onMoveManualRule("manual-1", { kind: "module", id: "fallback", name: "Fallback" });
+    expect(mocks.store.updateCustomRule).toHaveBeenCalledWith("manual-1", {
+      target: { kind: "module", id: "fallback" },
+    });
     card.onRestoreRule("rule-a");
     expect(mocks.store.restoreModuleRule).toHaveBeenCalledWith("auto", "rule-a");
     card.onResetRuleTarget("rule-a");
@@ -439,6 +442,40 @@ describe("ProxyGroupsCategories", () => {
     expect(advancedElement.props.target).toEqual({ kind: "module", id: "auto", name: "Auto Override" });
     advancedElement.props.onChange({ sourceIds: ["source-a"] });
     expect(mocks.store.updateProxyGroupAdvanced).toHaveBeenCalledWith("auto", { sourceIds: ["source-a"] });
+  });
+
+  it("builds proxy-group previews from effective nodes", () => {
+    mocks.store.nodes = [
+      {
+        name: "TAG-Notice",
+        _originName: "套餐到期提醒",
+        type: "ss",
+        server: "notice.example.com",
+        port: 8388,
+        cipher: "aes-128-gcm",
+        password: "secret",
+      },
+      {
+        name: "US",
+        type: "ss",
+        server: "us.example.com",
+        port: 8388,
+        cipher: "aes-128-gcm",
+        password: "secret",
+      },
+    ];
+    mocks.store.nodeNameFilter = {
+      enabled: true,
+      excludeRegexes: ["套餐到期"],
+    };
+
+    renderCategories({ 0: new Set(["core"]) });
+
+    expect(vi.mocked(generateProxyGroups)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        nodes: [expect.objectContaining({ name: "US" })],
+      }),
+    );
   });
 
   it("renders custom category and disabled non-core module branches", async () => {

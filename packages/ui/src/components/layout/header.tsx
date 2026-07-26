@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@subboost/ui/lib/utils";
+import { IconButton } from "@subboost/ui/components/ui/icon-button";
 import { UserMenu, type AccountMenuItem } from "@subboost/ui/components/auth/user-menu";
 import { captureAuthConfigHandoff } from "@subboost/ui/store/config-store/auth-handoff";
 import { useConfigStore } from "@subboost/ui/store/config-store";
@@ -189,8 +190,12 @@ export function Header({
             <UserMenu privilegedMenuItem={privilegedMenuItem} />
 
             {/* Mobile Menu Button */}
-            <button
-              className="md:hidden p-2 rounded-lg hover:bg-white/5 transition-colors"
+            <IconButton
+              label={mobileMenuOpen ? "关闭导航菜单" : "打开导航菜单"}
+              variant="ghost"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="subboost-mobile-navigation"
+              className="rounded-lg p-2 transition-colors hover:bg-white/5 md:hidden"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? (
@@ -198,13 +203,13 @@ export function Header({
               ) : (
                 <Menu className="w-5 h-5 text-white/60" />
               )}
-            </button>
+            </IconButton>
           </div>
         </div>
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-white/10 py-4">
+          <div id="subboost-mobile-navigation" className="md:hidden border-t border-white/10 py-4">
             <nav className="flex flex-col gap-1">
               {visibleNavItems.map((item) => {
                 const isActive = isNavItemActive(pathname, item.href);
