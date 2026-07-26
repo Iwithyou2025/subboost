@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import type { ParsedNode } from "@subboost/core/types/node";
 import type { SubscriptionSource } from "./definitions";
 import {
@@ -47,12 +48,23 @@ describe("createSourceActions parseMultipleSources", () => {
       source({ id: "yaml", type: "yaml", content: "proxies: []", tag: "Y" }),
       source({ id: "empty", type: "nodes", content: "   " }),
     ];
-    const { actions, getState } = createHarness({ sources });
+    const { actions, getState } = createHarness({
+      sources,
+      nodeNameFilter: { enabled: true, excludeRegexes: ["remote|yaml"] },
+    });
 
     await actions.parseMultipleSources(sources);
 
     expect(getState().isLoading).toBe(false);
     expect(getState().nodes.map((item: ParsedNode) => item.name)).toEqual(["[U]Remote", "[Y]Yaml"]);
+    expect(
+      resolveNodeNameFilter(getState().nodes, getState().nodeNameFilter)
+        .effectiveNodes
+    ).toEqual([]);
+    expect(getState().nodeNameFilter).toEqual({
+      enabled: true,
+      excludeRegexes: ["remote|yaml"],
+    });
     expect(getState().parseErrors).toEqual([
       "源 #3 获取失败: fetch failed",
       "源 #4: yaml warning",

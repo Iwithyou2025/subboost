@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import type { ParsedNode } from "@subboost/core/types/node";
 import type { SubscriptionSource } from "./definitions";
 import {
@@ -100,6 +101,7 @@ describe("createSourceActions", () => {
     const { actions, getState } = createHarness({
       nodes: [node("Existing", { server: "same.example.com" })],
       deletedNodeNames: ["Gone"],
+      nodeNameFilter: { enabled: true, excludeRegexes: ["fresh"] },
     });
 
     actions.parseContent("ss://content");
@@ -109,6 +111,14 @@ describe("createSourceActions", () => {
     expect(getState().nodes[0]).toMatchObject({ _originName: "Existing" });
     expect(getState().nodes[1]).toMatchObject({ _originName: "Fresh" });
     expect(getState().parseErrors).toEqual(["minor warning"]);
+    expect(getState().nodeNameFilter).toEqual({
+      enabled: true,
+      excludeRegexes: ["fresh"],
+    });
+    expect(
+      resolveNodeNameFilter(getState().nodes, getState().nodeNameFilter)
+        .effectiveNodes.map((item) => item.name)
+    ).toEqual(["Existing"]);
   });
 
   it("marks invalid parse content errors without changing nodes", () => {
@@ -245,6 +255,7 @@ describe("createSourceActions", () => {
           nameTemplate: "{tag}-{name}",
         }),
       ],
+      nodeNameFilter: { enabled: true, excludeRegexes: ["^remote node$"] },
     });
 
     await actions.parseSingleSource("s1");
@@ -253,6 +264,14 @@ describe("createSourceActions", () => {
     expect(getState().nodes[0]).toMatchObject({
       _originName: "Remote Node",
       _sourceIds: ["s1"],
+    });
+    expect(
+      resolveNodeNameFilter(getState().nodes, getState().nodeNameFilter)
+        .effectiveNodes
+    ).toEqual([]);
+    expect(getState().nodeNameFilter).toEqual({
+      enabled: true,
+      excludeRegexes: ["^remote node$"],
     });
     expect(getState().parseErrors).toEqual(["remote warning"]);
     expect(getState().sources[0]).toMatchObject({
