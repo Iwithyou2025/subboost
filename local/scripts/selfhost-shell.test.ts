@@ -261,9 +261,11 @@ ENV
       export SUBBOOST_DOCTOR_HEALTH_INTERVAL_SECONDS=0
       source local/scripts/subboost.sh
       sudo_do() { "$@"; }
+      docker_calls_file="$home/docker-calls"
       docker() {
         if [ "$1" = "info" ]; then return 0; fi
         if [ "$1" = "compose" ]; then
+          printf '%s\\n' "$*" >> "$docker_calls_file"
           case "$*" in
             "compose version"*) return 0 ;;
             *" config --services") printf 'app\\ndb\\ncron\\n'; return 0 ;;
@@ -302,6 +304,7 @@ ENV
       }
       update_cmd
       printf 'curl_count=%s\\n' "$(cat "$curl_count_file")"
+      cat "$docker_calls_file"
     `;
 
     const result = runBash(script);
@@ -311,6 +314,76 @@ ENV
     expect(result.stdout).not.toContain("健康检查: 异常");
     // wait_for_health checks live once per attempt, then status_cmd performs one final live+ready check.
     expect(result.stdout).toContain("curl_count=8");
+    expect(result.stdout).toContain("up -d --no-deps cron");
+  }, 10_000);
+
+  it("restarts rollback cron without recreating the healthy old app", () => {
+    const script = `
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      mkdir -p "$home/bin"
+      cat > "$home/.env" <<'ENV'
+SUBBOOST_IMAGE=image
+POSTGRES_DB=subboost
+POSTGRES_USER=subboost
+POSTGRES_PASSWORD=password
+DATABASE_URL=postgresql://subboost:password@db:5432/subboost?schema=public
+ENCRYPTION_KEY=key
+JWT_SECRET=jwt
+CRON_SECRET=cron
+APP_URL=http://127.0.0.1:31000
+SUBBOOST_PORT=31000
+ENV
+      : > "$home/docker-compose.yml"
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      export SUBBOOST_BIN="$home/bin/subboost"
+      export SUBBOOST_DOCTOR_HEALTH_ATTEMPTS=1
+      export SUBBOOST_DOCTOR_HEALTH_INTERVAL_SECONDS=0
+      source local/scripts/subboost.sh
+      sudo_do() { "$@"; }
+      docker_calls_file="$home/docker-calls"
+      docker() {
+        if [ "$1" = "info" ]; then return 0; fi
+        if [ "$1" = "compose" ]; then
+          printf '%s\\n' "$*" >> "$docker_calls_file"
+          case "$*" in
+            "compose version"*) return 0 ;;
+            *" config --services") printf 'app\\ndb\\ncron\\n'; return 0 ;;
+            *" config" | *" pull" | *" stop cron app") return 0 ;;
+            *"pg_dump -Fc"*) printf 'custom-dump'; return 0 ;;
+            *"pg_restore --list"* | *"pg_restore --clean"*) cat >/dev/null; return 0 ;;
+            *"candidate-compose.yml up -d --no-deps cron") return 1 ;;
+            *" up -d "*) return 0 ;;
+            *" ps -q app") printf 'app-id\\n'; return 0 ;;
+          esac
+        fi
+        if [ "$1" = "inspect" ] && [ "$2" = "-f" ]; then
+          printf 'sha256:old-image\\n'
+        fi
+        return 0
+      }
+      curl() { return 0; }
+      update_status=0
+      if update_cmd; then
+        :
+      else
+        update_status=$?
+      fi
+      printf 'update_status=%s\\n' "$update_status"
+      cat "$docker_calls_file"
+      [ "$update_status" -eq 1 ]
+    `;
+
+    const result = runBash(script);
+
+    expect(result.status, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain("Candidate update failed: candidate cron startup failed");
+    expect(result.stdout).toContain("Previous version restored successfully.");
+    expect(result.stdout).toMatch(/candidate-compose\.yml.*up -d --no-deps cron/);
+    expect(result.stdout).toMatch(/old-compose\.yml.*up -d --no-deps cron/);
+    expect(result.stdout).not.toMatch(/old-compose\.yml.*up -d cron(?:\s|$)/);
   }, 10_000);
 
   it("uses refreshed release metadata before pulling during update", () => {
