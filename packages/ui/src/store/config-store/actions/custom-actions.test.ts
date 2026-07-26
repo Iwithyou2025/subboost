@@ -120,6 +120,25 @@ describe("custom config-store actions", () => {
     expect(getState().builtinRuleEdits["module:ai:anthropic"]).toEqual({ enabled: false });
   });
 
+  it("removes the group listener binding when deleting a custom proxy group", () => {
+    const { actions, getState } = createHarness({
+      customProxyGroups: [
+        { id: "custom-1", name: "Streaming", emoji: "🧩", groupType: "select" },
+      ],
+      groupListeners: [
+        { id: "gl-1", target: { kind: "custom", id: "custom-1" }, port: 7891 },
+        { id: "gl-2", target: { kind: "module", id: "auto" }, port: 7892 },
+      ],
+    });
+
+    actions.removeCustomProxyGroup("custom-1");
+
+    expect(getState().customProxyGroups).toEqual([]);
+    expect(getState().groupListeners).toEqual([
+      { id: "gl-2", target: { kind: "module", id: "auto" }, port: 7892 },
+    ]);
+  });
+
   it("normalizes advanced custom proxy group fields and keeps blank-name removals narrow", () => {
     const { actions, getState } = createHarness({
       customProxyGroups: [

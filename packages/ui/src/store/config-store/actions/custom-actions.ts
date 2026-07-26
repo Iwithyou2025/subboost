@@ -185,11 +185,18 @@ export function createCustomActions(
             }),
           ),
         );
+        // 分组删除后监听绑定失去目标且无 UI 入口可清理，必须连带移除
+        const nextGroupListeners = state.groupListeners.filter(
+          (binding) => !(binding && binding.target && binding.target.kind === "custom" && binding.target.id === id),
+        );
         return {
           customProxyGroups: nextCustomProxyGroups,
           customRules: nextCustomRules,
           customRuleSets: nextCustomRuleSets,
           builtinRuleEdits: nextBuiltinRuleEdits,
+          ...(nextGroupListeners.length !== state.groupListeners.length
+            ? { groupListeners: nextGroupListeners }
+            : {}),
           ruleOrder: normalizeRuleOrderForState({
             ...state,
             customProxyGroups: nextCustomProxyGroups,

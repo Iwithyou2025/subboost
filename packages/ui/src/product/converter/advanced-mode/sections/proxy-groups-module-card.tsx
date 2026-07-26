@@ -33,7 +33,6 @@ import {
 } from "./proxy-group-name-editor";
 import { ProxyGroupSummary } from "./proxy-group-summary";
 import {
-  ProxyGroupTypeMenu,
   getLoadBalanceStrategyLabel,
   getProxyGroupTypeLabel,
   type ProxyGroupTypeMenuValue,
@@ -140,7 +139,8 @@ export function ProxyGroupsModuleCard({
   description,
   groupType,
   strategy,
-  onChangeGroupType,
+  onOpenAdvancedSettings,
+  advancedSettingsActive = false,
   rulesContentOverride,
   rulesCountOverride,
   advancedMode = false,
@@ -190,7 +190,8 @@ export function ProxyGroupsModuleCard({
   description?: string;
   groupType?: ProxyGroupTypeMenuValue;
   strategy?: LoadBalanceStrategy;
-  onChangeGroupType?: (next: { groupType: ProxyGroupTypeMenuValue; strategy?: LoadBalanceStrategy }) => void;
+  onOpenAdvancedSettings?: () => void;
+  advancedSettingsActive?: boolean;
   rulesContentOverride?: React.ReactNode;
   rulesCountOverride?: number;
   advancedMode?: boolean;
@@ -381,25 +382,27 @@ export function ProxyGroupsModuleCard({
               className="pointer-events-auto"
               onClick={(e) => e.stopPropagation()}
             />
-            {onChangeGroupType && (
-              <ProxyGroupTypeMenu
-                value={effectiveGroupType}
-                strategy={strategy}
-                onChange={onChangeGroupType}
-                contentAlign="end"
-                trigger={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="pointer-events-auto h-7 shrink-0 px-2 text-white/35 hover:text-indigo-200"
-                    title={`类型：${typeLabel}`}
-                    aria-label={`修改 ${display.full} 类型`}
-                  >
-                    <SlidersHorizontal className="h-3.5 w-3.5" />
-                  </Button>
-                }
-              />
+            {onOpenAdvancedSettings && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="pointer-events-auto relative h-7 shrink-0 px-2 text-white/35 hover:text-indigo-200"
+                title={`高级设置（类型：${typeLabel}）`}
+                aria-label={`打开 ${display.full} 高级设置`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenAdvancedSettings();
+                }}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {advancedSettingsActive && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-indigo-400"
+                  />
+                )}
+              </Button>
             )}
             <Button
               variant="ghost"
