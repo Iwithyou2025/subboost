@@ -118,7 +118,8 @@ export function NodeManagementAutoProcessingDialog({
 
         <FormField
           label="排除正则"
-          description="每行一条，匹配导入名称。"
+          description="每行一条，匹配到的节点会被全局排除，关闭后恢复。"
+          descriptionPlacement="before-control"
           error={validationMessage}
         >
           <Textarea

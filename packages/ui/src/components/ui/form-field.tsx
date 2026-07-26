@@ -15,6 +15,7 @@ export interface FormFieldProps {
   id?: string;
   label: React.ReactNode;
   description?: React.ReactNode;
+  descriptionPlacement?: "before-control" | "after-control";
   error?: React.ReactNode;
   required?: boolean;
   className?: string;
@@ -29,6 +30,7 @@ function FormField({
   id,
   label,
   description,
+  descriptionPlacement = "after-control",
   error,
   required = false,
   className,
@@ -51,19 +53,30 @@ function FormField({
     "aria-invalid": error ? true : controlChild.props["aria-invalid"],
     "aria-required": required || controlChild.props["aria-required"] || undefined,
   });
+  const labelElement = (
+    <Label htmlFor={controlChild.props.id ?? controlId}>
+      {label}
+      {required ? <span aria-hidden="true" className="ml-1 text-red-400">*</span> : null}
+    </Label>
+  );
+  const descriptionElement = description ? (
+    <p id={descriptionId} className="text-xs leading-relaxed text-white/45">
+      {description}
+    </p>
+  ) : null;
 
   return (
     <div className={cn("space-y-2", className)}>
-      <Label htmlFor={controlChild.props.id ?? controlId}>
-        {label}
-        {required ? <span aria-hidden="true" className="ml-1 text-red-400">*</span> : null}
-      </Label>
+      {descriptionPlacement === "before-control" && descriptionElement ? (
+        <div className="space-y-1">
+          {labelElement}
+          {descriptionElement}
+        </div>
+      ) : (
+        labelElement
+      )}
       {control}
-      {description ? (
-        <p id={descriptionId} className="text-xs leading-relaxed text-white/45">
-          {description}
-        </p>
-      ) : null}
+      {descriptionPlacement === "after-control" ? descriptionElement : null}
       {error ? (
         <p id={errorId} className="text-xs leading-relaxed text-red-400" role="alert">
           {error}
