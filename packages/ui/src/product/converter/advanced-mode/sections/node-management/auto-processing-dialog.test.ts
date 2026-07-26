@@ -127,25 +127,25 @@ describe("NodeManagementAutoProcessingDialog", () => {
 
   it("renders the compact wording, counts, and matching display/origin names", () => {
     const { html } = renderDialog();
+    const helperText =
+      "每行一条，按节点导入时的原始名称匹配；命中节点会在生成配置时全局排除，关闭后恢复。";
 
     expect(html).toContain("自动处理");
     expect(html).toContain("启用");
     expect(html).toContain("排除正则");
-    expect(html).toContain("每行一条，匹配到的节点会被全局排除，关闭后恢复。");
+    expect(html).toContain(helperText);
     expect(html).toContain("剩余流量|套餐到期|注意事项");
-    expect(html.indexOf("排除正则")).toBeLessThan(
-      html.indexOf("每行一条，匹配到的节点会被全局排除，关闭后恢复。")
+    expect(html.indexOf("排除正则")).toBeLessThan(html.indexOf(helperText));
+    expect(html.indexOf(helperText)).toBeLessThan(
+      html.indexOf("剩余流量|套餐到期|注意事项")
     );
-    expect(
-      html.indexOf("每行一条，匹配到的节点会被全局排除，关闭后恢复。")
-    ).toBeLessThan(html.indexOf("剩余流量|套餐到期|注意事项"));
     expect(html).toContain("导入 2 · 排除 1 · 保留 1");
     expect(html).toContain("[HK] Alpha");
     expect(html).toContain("原名：Alpha");
     expect(html).not.toContain("原名：Beta");
     expect(mocks.formField).toEqual(
       expect.objectContaining({
-        description: "每行一条，匹配到的节点会被全局排除，关闭后恢复。",
+        description: helperText,
         descriptionPlacement: "before-control",
         label: "排除正则",
       })

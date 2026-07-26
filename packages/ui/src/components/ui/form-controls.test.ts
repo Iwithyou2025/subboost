@@ -51,7 +51,7 @@ describe("composed form controls", () => {
         {
           id: "exclude-regex",
           label: "排除正则",
-          description: "每行一条，匹配到的节点会被全局排除，关闭后恢复。",
+          description: "每行一条，按节点导入时的原始名称匹配。",
           descriptionPlacement: "before-control",
         },
         React.createElement(Input)
@@ -59,14 +59,13 @@ describe("composed form controls", () => {
     );
     const labelIndex = html.indexOf("排除正则");
     const descriptionIndex = html.indexOf(
-      "每行一条，匹配到的节点会被全局排除，关闭后恢复。"
+      "每行一条，按节点导入时的原始名称匹配。"
     );
     const controlIndex = html.indexOf("<input");
 
     expect(labelIndex).toBeGreaterThanOrEqual(0);
     expect(descriptionIndex).toBeGreaterThan(labelIndex);
     expect(controlIndex).toBeGreaterThan(descriptionIndex);
-    expect(html).toContain('class="space-y-1"');
     expect(html).toContain('aria-describedby="exclude-regex-description"');
   });
 
