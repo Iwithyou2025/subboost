@@ -66,9 +66,9 @@ function FormField({
   ) : null;
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("grid gap-3", className)}>
       {descriptionPlacement === "before-control" && descriptionElement ? (
-        <div className="space-y-1">
+        <div className="grid gap-1">
           {labelElement}
           {descriptionElement}
         </div>

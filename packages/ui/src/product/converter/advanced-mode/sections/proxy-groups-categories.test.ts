@@ -133,6 +133,12 @@ vi.mock("./proxy-groups-module-card", () => ({
     return null;
   },
 }));
+vi.mock("./group-advanced-settings-dialog", () => ({
+  GroupAdvancedSettingsDialog: (props: any) => {
+    mocks.captures.settingsDialogs.push(props);
+    return null;
+  },
+}));
 
 import { ProxyGroupsCategories } from "./proxy-groups-categories";
 import { generateProxyGroups } from "@subboost/core/generator/proxy-groups";
@@ -146,6 +152,7 @@ function renderCategories(overrides: Record<number, unknown> = {}) {
   mocks.captures.inputs = [];
   mocks.captures.dropdownItems = [];
   mocks.captures.moduleCards = [];
+  mocks.captures.settingsDialogs = [];
   mocks.captures.customPanelRendered = false;
   mocks.captures.customRulesRendered = false;
   try {
@@ -165,6 +172,7 @@ function renderCategoryTree(overrides: Record<number, unknown> = {}) {
   mocks.captures.inputs = [];
   mocks.captures.dropdownItems = [];
   mocks.captures.moduleCards = [];
+  mocks.captures.settingsDialogs = [];
   mocks.captures.customPanelRendered = false;
   mocks.captures.customRulesRendered = false;
   try {
@@ -193,7 +201,7 @@ describe("ProxyGroupsCategories", () => {
     vi.clearAllMocks();
     stateMock.refOverride = undefined;
     mocks.confirmDialog.mockResolvedValue(true);
-    mocks.captures = { inputs: [], dropdownItems: [], moduleCards: [] };
+    mocks.captures = { inputs: [], dropdownItems: [], moduleCards: [], settingsDialogs: [] };
     mocks.store = {
       ruleProviderBaseUrl: "https://rules.example/base/",
       nodes: [],
@@ -231,6 +239,11 @@ describe("ProxyGroupsCategories", () => {
       proxyGroupAdvancedModeEnabled: false,
       setProxyGroupAdvancedModeEnabled: vi.fn(),
       updateProxyGroupAdvanced: vi.fn(),
+      groupListeners: [],
+      setGroupListener: vi.fn(),
+      dnsYaml: "",
+      mixedPort: 7890,
+      listenerPorts: {},
     };
   });
 
@@ -419,24 +432,29 @@ describe("ProxyGroupsCategories", () => {
     expect(card.hiddenPresetRuleIds.auto).toContain("auto-rule");
     expect(card.hiddenPresetRuleIds.auto).toContain("moved-rule");
 
-    card.onChangeGroupType({ groupType: "load-balance" });
+    // 类型/监听改动统一走高级设置弹窗
+    card.onOpenAdvancedSettings();
+    expect(stateMock.setters[4]).toHaveBeenCalledWith("auto");
+
+    renderCategories({ 0: new Set(["core"]), 4: "auto" });
+    const settingsDialog = mocks.captures.settingsDialogs[0];
+    expect(settingsDialog.groupName).toBe("Auto Override");
+    settingsDialog.onSave({ groupType: "load-balance", strategy: "round-robin", listener: null });
     expect(mocks.store.updateProxyGroupAdvanced).toHaveBeenCalledWith("auto", {
       groupType: "load-balance",
       strategy: "round-robin",
     });
-    card.onChangeGroupType({ groupType: "fallback", strategy: "consistent-hashing" });
+    expect(mocks.store.setGroupListener).toHaveBeenCalledWith({ kind: "module", id: "auto" }, null);
+
+    settingsDialog.onSave({ groupType: "fallback", listener: { port: 7891, enabled: true, allowLan: false } });
     expect(mocks.store.updateProxyGroupAdvanced).toHaveBeenCalledWith("auto", {
       groupType: "fallback",
       strategy: undefined,
     });
-
-    mocks.store.proxyGroupAdvanced = { auto: {} };
-    renderCategories({ 0: new Set(["core"]) });
-    mocks.captures.moduleCards[0].onChangeGroupType({ groupType: "load-balance" });
-    expect(mocks.store.updateProxyGroupAdvanced).toHaveBeenCalledWith("auto", {
-      groupType: "load-balance",
-      strategy: "round-robin",
-    });
+    expect(mocks.store.setGroupListener).toHaveBeenCalledWith(
+      { kind: "module", id: "auto" },
+      { port: 7891, enabled: true, allowLan: false }
+    );
 
     const advancedElement = card.renderAdvancedContent(React.createElement("div", null, "rules"), 2);
     expect(advancedElement.props.target).toEqual({ kind: "module", id: "auto", name: "Auto Override" });

@@ -550,4 +550,32 @@ describe("subscription config utils", () => {
     expect(options.dialerProxyGroups).toBeUndefined();
   });
 
+  it("restores persisted group listeners with stable targets and drops malformed entries", () => {
+    const options = buildGenerateOptionsFromConfig(
+      {
+        groupListeners: [
+          { id: "gl-1", target: { kind: "module", id: "auto" }, port: 7891 },
+          { id: "gl-2", target: { kind: "custom", id: "c1" }, port: 7892, enabled: false, allowLan: true },
+          // 同目标重复：仅保留首条
+          { id: "gl-dup", target: { kind: "module", id: "auto" }, port: 7899 },
+          // 非法条目：全部丢弃
+          { id: "gl-bad-kind", target: { kind: "node", id: "n1" }, port: 7893 },
+          { id: "gl-bad-port", target: { kind: "dialer", id: "d1" }, port: 70000 },
+          { id: "gl-no-target", port: 7894 },
+          { target: { kind: "dialer", id: "d2" }, port: 7895 },
+        ],
+      },
+      { nodes: [node()] },
+    );
+
+    expect(options.groupListeners).toEqual([
+      { id: "gl-1", target: { kind: "module", id: "auto" }, port: 7891 },
+      { id: "gl-2", target: { kind: "custom", id: "c1" }, port: 7892, enabled: false, allowLan: true },
+      { id: "group_listener_7", target: { kind: "dialer", id: "d2" }, port: 7895 },
+    ]);
+
+    // 无 groupListeners 时不携带该字段
+    expect(buildGenerateOptionsFromConfig({}, { nodes: [node()] })).not.toHaveProperty("groupListeners");
+  });
+
 });

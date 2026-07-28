@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     proxyGroupAdded: vi.fn(),
   },
   toast: vi.fn(),
+  confirmDialog: vi.fn(async () => true),
 }));
 
 const stateMock = vi.hoisted(() => ({
@@ -119,6 +120,7 @@ vi.mock("@subboost/ui/components/ui/switch", () => ({
   },
 }));
 vi.mock("@subboost/ui/components/ui/toaster", () => ({ toast: mocks.toast }));
+vi.mock("@subboost/ui/components/ui/confirm-dialog", () => ({ confirmDialog: mocks.confirmDialog }));
 vi.mock("@subboost/core/generator/proxy-groups", () => ({
   PROXY_GROUP_MODULES: [
     { id: "auto", name: "Auto" },
@@ -144,6 +146,12 @@ vi.mock("@subboost/ui/product/interactions", () => ({ useProductInteractionAdapt
 vi.mock("../section-header", () => ({
   SectionHeader: (props: any) => {
     mocks.captures.header = props;
+    return null;
+  },
+}));
+vi.mock("./group-advanced-settings-dialog", () => ({
+  GroupAdvancedSettingsDialog: (props: any) => {
+    mocks.captures.settingsDialogs.push(props);
     return null;
   },
 }));
@@ -187,6 +195,7 @@ function renderSection(overrides: Record<number, unknown> = {}, props = { isExpa
   mocks.captures.dropdownContents = [];
   mocks.captures.dropdownRoots = [];
   mocks.captures.intrinsics = [];
+  mocks.captures.settingsDialogs = [];
   try {
     const html = renderToStaticMarkup(React.createElement(DialerProxyGroupsSection, props));
     return { html, setters: stateMock.setters };
@@ -228,6 +237,11 @@ describe("DialerProxyGroupsSection", () => {
       updateDialerProxyGroup: vi.fn(),
       addNodeToDialerGroup: vi.fn(),
       removeNodeFromDialerGroup: vi.fn(),
+      groupListeners: [],
+      setGroupListener: vi.fn(),
+      dnsYaml: "",
+      mixedPort: 7890,
+      listenerPorts: {},
     };
   });
 
@@ -384,19 +398,22 @@ describe("DialerProxyGroupsSection", () => {
     expect(mocks.store.updateDialerProxyGroup).toHaveBeenCalledWith("g-a", { enabled: false });
     mocks.captures.switches[0].onClick({ stopPropagation: vi.fn() });
 
-    const groupTypeButton = mocks.captures.buttons.find((props: any) => props["aria-label"] === "修改 Group A 类型");
-    expect(groupTypeButton).toEqual(expect.objectContaining({ title: "类型：手动选择" }));
-    groupTypeButton.onClick({ stopPropagation: vi.fn() });
-    const autoTypeItem = mocks.captures.menuItems.find((props: any) => textOf(props.children).includes("自动测速"));
-    autoTypeItem.onSelect();
+    // 类型/监听改动统一走高级设置弹窗
+    const settingsButton = mocks.captures.buttons.find((props: any) => props["aria-label"] === "打开 Group A 高级设置");
+    expect(settingsButton).toEqual(expect.objectContaining({ title: "高级设置（类型：手动选择）" }));
+    const stopSettingsClick = vi.fn();
+    settingsButton.onClick({ stopPropagation: stopSettingsClick });
+    expect(stopSettingsClick).toHaveBeenCalled();
+    expect(stateMock.setters[7]).toHaveBeenCalledWith("g-a");
+
+    renderSection({ 0: new Set(["g-a"]), 7: "g-a" });
+    const settingsDialog = mocks.captures.settingsDialogs[0];
+    expect(settingsDialog.groupName).toBe("Group A");
+    settingsDialog.onSave({ groupType: "url-test", listener: null });
     expect(mocks.store.updateDialerProxyGroup).toHaveBeenCalledWith("g-a", { type: "url-test", strategy: undefined });
+    expect(mocks.store.setGroupListener).toHaveBeenCalledWith({ kind: "dialer", id: "g-a" }, null);
 
-    const fallbackTypeItem = mocks.captures.menuItems.find((props: any) => textOf(props.children).includes("故障切换"));
-    fallbackTypeItem.onSelect();
-    expect(mocks.store.updateDialerProxyGroup).toHaveBeenCalledWith("g-a", { type: "fallback", strategy: undefined });
-
-    const roundRobinTypeItem = mocks.captures.menuItems.find((props: any) => textOf(props.children).includes("轮询均摊"));
-    roundRobinTypeItem.onSelect();
+    settingsDialog.onSave({ groupType: "load-balance", strategy: "round-robin", listener: null });
     expect(mocks.store.updateDialerProxyGroup).toHaveBeenCalledWith("g-a", { type: "load-balance", strategy: "round-robin" });
 
     mocks.captures.switches[1].onCheckedChange(true);
@@ -414,6 +431,22 @@ describe("DialerProxyGroupsSection", () => {
     );
 
     mocks.captures.iconButtons.find((props: any) => props.label === "删除 Group A 中转组").onClick({ stopPropagation: vi.fn() });
+    expect(mocks.store.removeDialerProxyGroup).toHaveBeenCalledWith("g-a");
+  });
+
+  it("confirms and cascades listener removal when deleting a dialer group with a binding", async () => {
+    mocks.store.groupListeners = [{ id: "gl-1", target: { kind: "dialer", id: "g-a" }, port: 7891 }];
+    renderSection({ 0: new Set(["g-a"]) });
+    const deleteButton = mocks.captures.iconButtons.find((props: any) => props.label === "删除 Group A 中转组");
+
+    mocks.confirmDialog.mockResolvedValueOnce(false);
+    await deleteButton.onClick({ stopPropagation: vi.fn() });
+    expect(mocks.confirmDialog).toHaveBeenCalledTimes(1);
+    expect(mocks.confirmDialog).toHaveBeenCalledWith(expect.objectContaining({ variant: "warning" }));
+    expect(mocks.store.removeDialerProxyGroup).not.toHaveBeenCalled();
+
+    mocks.confirmDialog.mockResolvedValueOnce(true);
+    await deleteButton.onClick({ stopPropagation: vi.fn() });
     expect(mocks.store.removeDialerProxyGroup).toHaveBeenCalledWith("g-a");
   });
 

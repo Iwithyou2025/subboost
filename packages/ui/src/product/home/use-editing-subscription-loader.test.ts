@@ -477,6 +477,14 @@ describe("useEditingSubscriptionLoader", () => {
             config: {
               deletedNodeNames: ["Gone"],
               listenerPorts: { Active: 41000, Gone: 41001, Bad: "x", OutOfRange: 70000 },
+              groupListeners: [
+                { id: "gl-1", target: { kind: "module", id: "auto" }, port: 7891 },
+                { id: "gl-2", target: { kind: "custom", id: "c1" }, port: 7892, enabled: false, allowLan: true },
+                // 同目标重复与非法条目在恢复时丢弃
+                { id: "gl-dup", target: { kind: "module", id: "auto" }, port: 7899 },
+                { id: "gl-bad", target: { kind: "node", id: "n1" }, port: 7893 },
+                { id: "gl-bad-port", target: { kind: "dialer", id: "d1" }, port: 70000 },
+              ],
             },
           },
         })
@@ -508,6 +516,10 @@ describe("useEditingSubscriptionLoader", () => {
     ]);
     expect(mocks.bag.storeState.deletedNodes).toEqual([{ originName: "Gone", name: "Gone" }]);
     expect(mocks.bag.storeState.listenerPorts).toEqual({ Active: 41000 });
+    expect(mocks.bag.storeState.groupListeners).toEqual([
+      { id: "gl-1", target: { kind: "module", id: "auto" }, port: 7891 },
+      { id: "gl-2", target: { kind: "custom", id: "c1" }, port: 7892, enabled: false, allowLan: true },
+    ]);
     expect(options.setEditingSubscription).toHaveBeenCalledWith(
       expect.objectContaining({ autoUpdateInterval: 30, smartNodeMatchingEnabled: true })
     );

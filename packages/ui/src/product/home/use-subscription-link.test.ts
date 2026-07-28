@@ -107,6 +107,7 @@ describe("useSubscriptionLink", () => {
       proxyGroupAdvancedModeEnabled: true,
       proxyGroupOrder: ["select", "auto"],
       nodeNameFilter: { enabled: false, excludeRegexes: [] },
+      groupListeners: [{ id: "gl-1", target: { kind: "module", id: "auto" }, port: 7891 }],
     };
     originalWindow = globalThis.window;
     originalNavigator = globalThis.navigator;
@@ -260,6 +261,7 @@ describe("useSubscriptionLink", () => {
             proxyGroupAdvanced: { auto: { includeRegex: "Fast" } },
             proxyGroupAdvancedModeEnabled: true,
             listenerPorts: { "Node A": 41000 },
+            groupListeners: [{ id: "gl-1", target: { kind: "module", id: "auto" }, port: 7891 }],
             proxyGroupOrder: ["select", "auto"],
             nodeNameFilter: { enabled: false, excludeRegexes: [] },
           }),

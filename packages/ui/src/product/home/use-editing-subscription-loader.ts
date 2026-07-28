@@ -486,6 +486,35 @@ export function useEditingSubscriptionLoader({
           }
           return out;
         })();
+        const groupListenersFromCfg = (() => {
+          const raw = (cfg as any).groupListeners;
+          if (!Array.isArray(raw)) return [];
+          const out: Array<{ id: string; target: { kind: "module" | "custom" | "dialer"; id: string }; port: number; enabled?: false; allowLan?: true }> = [];
+          const usedTargets = new Set<string>();
+          for (let index = 0; index < raw.length; index += 1) {
+            const item = raw[index];
+            if (!item || typeof item !== "object") continue;
+            const target = (item as any).target;
+            if (!target || typeof target !== "object") continue;
+            const kind = target.kind;
+            if (kind !== "module" && kind !== "custom" && kind !== "dialer") continue;
+            const targetId = typeof target.id === "string" ? target.id.trim() : "";
+            if (!targetId) continue;
+            const port = (item as any).port;
+            if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) continue;
+            const targetKey = `${kind}:${targetId}`;
+            if (usedTargets.has(targetKey)) continue;
+            usedTargets.add(targetKey);
+            out.push({
+              id: typeof (item as any).id === "string" && (item as any).id.trim() ? (item as any).id.trim() : `group_listener_${index + 1}`,
+              target: { kind, id: targetId },
+              port,
+              ...((item as any).enabled === false ? { enabled: false as const } : {}),
+              ...((item as any).allowLan === true ? { allowLan: true as const } : {}),
+            });
+          }
+          return out;
+        })();
         const appliedTemplateIdFromCfg =
           typeof cfg.appliedTemplateId === "string" && cfg.appliedTemplateId.trim()
             ? (cfg.appliedTemplateId as string)
@@ -540,6 +569,7 @@ export function useEditingSubscriptionLoader({
           proxyGroupOrder: proxyGroupOrderFromCfg ? proxyGroupOrderFromCfg : state.proxyGroupOrder,
           ruleOrder: ruleOrderFromCfg.length > 0 ? ruleOrderFromCfg : state.ruleOrder,
           listenerPorts: listenerPortsFromCfg,
+          groupListeners: groupListenersFromCfg,
           appliedTemplateId: appliedTemplateIdFromCfg ?? state.appliedTemplateId,
           nodeNameFilter: nodeNameFilterFromCfg,
           dnsYaml: typeof cfg.dnsYaml === "string" ? (cfg.dnsYaml as string) : state.dnsYaml,
