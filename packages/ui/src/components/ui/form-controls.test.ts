@@ -18,6 +18,19 @@ import {
   TableRow,
 } from "./table";
 
+function getRootClassNames(html: string) {
+  const className = html.match(/^<[^>]+ class="([^"]*)"/)?.[1];
+  expect(className).toBeDefined();
+  return className?.split(/\s+/) ?? [];
+}
+
+function hasElementWithClasses(html: string, ...expectedClasses: string[]) {
+  return [...html.matchAll(/class="([^"]*)"/g)].some(([, className]) => {
+    const classes = className.split(/\s+/);
+    return expectedClasses.every((expectedClass) => classes.includes(expectedClass));
+  });
+}
+
 describe("composed form controls", () => {
   it("associates labels, descriptions, errors, required state, and existing IDs", () => {
     const html = renderToStaticMarkup(
@@ -29,6 +42,7 @@ describe("composed form controls", () => {
           description: "用于登录",
           error: "不能为空",
           required: true,
+          className: "mt-4",
         },
         React.createElement(Input, { "aria-describedby": "external-help" })
       )
@@ -40,6 +54,9 @@ describe("composed form controls", () => {
     expect(html).toContain('aria-invalid="true"');
     expect(html).toContain('aria-required="true"');
     expect(html).toContain('role="alert"');
+    expect(getRootClassNames(html)).toEqual(
+      expect.arrayContaining(["grid", "gap-3", "mt-4"])
+    );
     expect(html.indexOf("账号")).toBeLessThan(html.indexOf("<input"));
     expect(html.indexOf("<input")).toBeLessThan(html.indexOf("用于登录"));
   });
@@ -67,6 +84,8 @@ describe("composed form controls", () => {
     expect(descriptionIndex).toBeGreaterThan(labelIndex);
     expect(controlIndex).toBeGreaterThan(descriptionIndex);
     expect(html).toContain('aria-describedby="exclude-regex-description"');
+    expect(getRootClassNames(html)).toEqual(expect.arrayContaining(["grid", "gap-3"]));
+    expect(hasElementWithClasses(html, "grid", "gap-1")).toBe(true);
   });
 
   it("renders a disabled, labelled switch with its description", () => {

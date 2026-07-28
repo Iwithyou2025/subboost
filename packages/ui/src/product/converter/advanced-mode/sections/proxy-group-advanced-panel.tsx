@@ -507,7 +507,6 @@ export function ProxyGroupAdvancedPanel({
         <div className="relative space-y-3 p-3 before:absolute before:bottom-3 before:left-0 before:top-3 before:w-px before:bg-white/10">
           <FormField
             label={<span className="text-[11px] font-medium text-white/50">包含正则（可选）</span>}
-            className="space-y-1"
           >
             <Input
               value={advanced.includeRegex ?? ""}
@@ -518,7 +517,6 @@ export function ProxyGroupAdvancedPanel({
           </FormField>
           <FormField
             label={<span className="text-[11px] font-medium text-white/50">排除正则（可选）</span>}
-            className="space-y-1"
           >
             <Input
               value={advanced.excludeRegex ?? ""}
