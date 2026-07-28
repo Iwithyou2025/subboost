@@ -61,23 +61,16 @@ vi.mock("@subboost/ui/components/ui/input", () => ({
     return null;
   },
 }));
-vi.mock("@subboost/ui/components/ui/select", () => ({
-  Select: (props: any) => {
-    mocks.captures.selects.push(props);
-    return props.children;
-  },
-  SelectTrigger: (props: any) => props.children ?? null,
-  SelectValue: () => null,
-  SelectContent: (props: any) => props.children,
-  SelectItem: (props: any) => {
-    mocks.captures.selectItems.push(props);
-    return null;
+vi.mock("@subboost/ui/components/ui/switch-field", () => ({
+  SwitchField: (props: any) => {
+    mocks.captures.switchFields.push(props);
+    return React.createElement("div", null, props.label, props.description ?? null);
   },
 }));
-vi.mock("@subboost/ui/components/ui/switch", () => ({
-  Switch: (props: any) => {
-    mocks.captures.switches.push(props);
-    return null;
+vi.mock("./proxy-group-type-menu", () => ({
+  ProxyGroupTypeMenu: (props: any) => {
+    mocks.captures.typeMenus.push(props);
+    return React.createElement("div", null, "代理组类型选单");
   },
 }));
 
@@ -97,7 +90,14 @@ function renderDialog(overrides: Record<number, unknown> = {}, props: Record<str
   stateMock.callIndex = 0;
   stateMock.overrides = overrides;
   stateMock.setters = [];
-  mocks.captures = { buttons: [], dialogContents: [], formFields: [], inputs: [], selects: [], selectItems: [], switches: [] };
+  mocks.captures = {
+    buttons: [],
+    dialogContents: [],
+    formFields: [],
+    inputs: [],
+    switchFields: [],
+    typeMenus: [],
+  };
   try {
     const html = renderToStaticMarkup(
       React.createElement(GroupAdvancedSettingsDialog, {
@@ -122,12 +122,36 @@ describe("GroupAdvancedSettingsDialog", () => {
     vi.clearAllMocks();
   });
 
-  it("shows the strategy field only for load-balance", () => {
+  it("reuses the nested proxy-group type menu for load-balance strategies", () => {
     renderDialog();
     expect(mocks.captures.formFields.map((f: any) => f.label)).toEqual(["代理组类型"]);
+    expect(mocks.captures.typeMenus[0]).toEqual(
+      expect.objectContaining({
+        value: "select",
+        strategy: "consistent-hashing",
+        showStrategyLabel: true,
+      })
+    );
 
-    renderDialog({ 0: "load-balance" });
-    expect(mocks.captures.formFields.map((f: any) => f.label)).toEqual(["代理组类型", "负载均衡策略"]);
+    mocks.captures.typeMenus[0].onChange({
+      groupType: "load-balance",
+      strategy: "round-robin",
+    });
+    expect(stateMock.setters[0]).toHaveBeenCalledWith("load-balance");
+    expect(stateMock.setters[1]).toHaveBeenCalledWith("round-robin");
+  });
+
+  it("delegates field spacing to the shared FormField default", () => {
+    renderDialog({ 2: true, 3: "7891" });
+    expect(
+      mocks.captures.formFields.map((field: any) => ({
+        label: field.label,
+        className: field.className,
+      }))
+    ).toEqual([
+      { label: "代理组类型", className: undefined },
+      { label: "端口", className: undefined },
+    ]);
   });
 
   it("saves only on the save button and passes the full draft", () => {
@@ -221,8 +245,14 @@ describe("GroupAdvancedSettingsDialog", () => {
 
   it("shows the amber security hint only when allowLan is enabled", () => {
     const withLan = renderDialog({ 2: true, 3: "7891", 4: true });
-    expect(withLan.html).toContain("0.0.0.0");
+    expect(withLan.html).toContain(
+      "开启后监听 0.0.0.0，如果你的端口能从公网访问，任何人都可以使用你的节点。"
+    );
     expect(withLan.html).toContain("amber");
+    expect(mocks.captures.switchFields.map((field: any) => field.label)).toEqual([
+      "监听端口",
+      "允许其他设备访问",
+    ]);
 
     const withoutLan = renderDialog({ 2: true, 3: "7891", 4: false });
     expect(withoutLan.html).not.toContain("amber");

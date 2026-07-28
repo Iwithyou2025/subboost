@@ -11,36 +11,19 @@ import {
 } from "@subboost/ui/components/ui/dialog";
 import { FormField } from "@subboost/ui/components/ui/form-field";
 import { Input } from "@subboost/ui/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@subboost/ui/components/ui/select";
-import { Switch } from "@subboost/ui/components/ui/switch";
+import { SwitchField } from "@subboost/ui/components/ui/switch-field";
 import {
   DEFAULT_LOAD_BALANCE_STRATEGY,
-  LOAD_BALANCE_STRATEGIES,
   type GroupListenerBinding,
   type GroupListenerTarget,
   type LoadBalanceStrategy,
   type ProxyGroupGroupType,
 } from "@subboost/core/types/config";
-import { getLoadBalanceStrategyLabel, getProxyGroupTypeLabel } from "./proxy-group-type-menu";
+import { ProxyGroupTypeMenu } from "./proxy-group-type-menu";
 import {
   validateGroupListenerPort,
   type GroupListenerConflictState,
 } from "./group-listener-settings";
-
-const GROUP_TYPE_OPTIONS: ProxyGroupGroupType[] = [
-  "select",
-  "url-test",
-  "fallback",
-  "load-balance",
-  "direct-first",
-  "reject-first",
-];
 
 export interface GroupAdvancedSettingsValue {
   groupType: ProxyGroupGroupType;
@@ -122,59 +105,30 @@ export function GroupAdvancedSettingsDialog({
           <DialogTitle className="break-words pr-6 text-white">{groupName} · 高级设置</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           <FormField label="代理组类型">
-            <Select value={draftType} onValueChange={(value) => setDraftType(value as ProxyGroupGroupType)}>
-              <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {GROUP_TYPE_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={option} className="text-xs">
-                    {getProxyGroupTypeLabel(option)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ProxyGroupTypeMenu
+              value={draftType}
+              strategy={draftStrategy}
+              showStrategyLabel
+              onChange={(next) => {
+                setDraftType(next.groupType);
+                if (next.strategy) setDraftStrategy(next.strategy);
+              }}
+            />
           </FormField>
 
-          {draftType === "load-balance" && (
-            <FormField label="负载均衡策略">
-              <Select
-                value={draftStrategy}
-                onValueChange={(value) => setDraftStrategy(value as LoadBalanceStrategy)}
-              >
-                <SelectTrigger className="h-8 border-white/10 bg-white/5 text-xs text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOAD_BALANCE_STRATEGIES.map((option) => (
-                    <SelectItem key={option} value={option} className="text-xs">
-                      {getLoadBalanceStrategyLabel(option)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
-          )}
-
-          <div className="space-y-3 rounded-lg border border-white/10 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-xs font-medium text-white">监听端口</div>
-                <div className="text-[10px] leading-relaxed text-white/45">
-                  为该策略组开一个本地 mixed 入站端口，流量固定走此组
-                </div>
-              </div>
-              <Switch
-                aria-label={`启用 ${groupName} 监听端口`}
-                checked={listenerOn}
-                onCheckedChange={setListenerOn}
-              />
-            </div>
+          <div className="space-y-3">
+            <SwitchField
+              label="监听端口"
+              description="为该策略组打开一个 mixed 入站端口，流量固定走此组"
+              checked={listenerOn}
+              onCheckedChange={setListenerOn}
+              density="compact"
+            />
 
             {(listenerOn || portInput.trim() !== "") && (
-              <>
+              <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
                 <FormField label="端口" error={portError}>
                   <Input
                     value={portInput}
@@ -185,21 +139,18 @@ export function GroupAdvancedSettingsDialog({
                   />
                 </FormField>
 
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs text-white/65">允许局域网访问</div>
-                  <Switch
-                    aria-label={`允许局域网访问 ${groupName} 监听端口`}
-                    checked={allowLan}
-                    onCheckedChange={setAllowLan}
-                  />
-                </div>
+                <SwitchField
+                  label="允许其他设备访问"
+                  checked={allowLan}
+                  onCheckedChange={setAllowLan}
+                  density="compact"
+                />
                 {allowLan && (
                   <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[10px] leading-relaxed text-amber-200">
-                    开启后监听 0.0.0.0，局域网内任何设备都能通过该端口使用此代理，请确认所在网络可信。
-                    默认仅本机（127.0.0.1）可访问。
+                    开启后监听 0.0.0.0，如果你的端口能从公网访问，任何人都可以使用你的节点。
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         </div>
