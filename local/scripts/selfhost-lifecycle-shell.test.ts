@@ -138,10 +138,19 @@ describe("self-host update rollback lifecycle", () => {
     expect(installer).not.toContain("?setup-token=");
   });
 
+  it("allows the legacy v2.6.0 environment through first-hop Compose interpolation", () => {
+    // The v2.6.0 updater evaluates the candidate Compose file before the
+    // candidate manager can add LOCAL_SETUP_TOKEN to an initialized .env.
+    for (const file of ["local/docker-compose.yml", "local/docker-compose.image.yml"]) {
+      const compose = readFileSync(path.join(publicRoot, file), "utf8");
+      expect(compose).toContain("LOCAL_SETUP_TOKEN: ${LOCAL_SETUP_TOKEN:-}");
+      expect(compose).not.toContain("LOCAL_SETUP_TOKEN: ${LOCAL_SETUP_TOKEN:?");
+    }
+  });
+
   it("propagates cron endpoint failures to the container restart policy", () => {
     for (const file of ["local/docker-compose.yml", "local/docker-compose.image.yml"]) {
       const compose = readFileSync(path.join(publicRoot, file), "utf8");
-      expect(compose).toContain("LOCAL_SETUP_TOKEN: ${LOCAL_SETUP_TOKEN:?set LOCAL_SETUP_TOKEN}");
       expect(compose).toContain("curl -fsS");
       expect(compose).toContain("failed=1");
       expect(compose).toContain("exit 1");

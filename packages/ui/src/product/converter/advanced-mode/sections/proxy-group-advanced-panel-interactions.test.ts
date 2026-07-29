@@ -5,6 +5,7 @@ import type { ParsedNode } from "@subboost/core/types/node";
 
 const mocks = vi.hoisted(() => ({
   draggingKey: null as string | null,
+  formFields: [] as any[],
   generatedProxyGroups: [] as Array<{ name: string; proxies: string[] }>,
   stateSetters: [] as Array<ReturnType<typeof vi.fn>>,
   store: {} as Record<string, any>,
@@ -46,7 +47,10 @@ vi.mock("@subboost/ui/components/ui/button", () => ({
 }));
 
 vi.mock("@subboost/ui/components/ui/form-field", () => ({
-  FormField: (props: any) => React.createElement("div", null, props.children),
+  FormField: (props: any) => {
+    mocks.formFields.push(props);
+    return React.createElement("div", null, props.children);
+  },
 }));
 
 vi.mock("@subboost/ui/components/ui/choice-group", () => ({
@@ -121,6 +125,7 @@ describe("ProxyGroupAdvancedPanel interactions", () => {
     vi.clearAllMocks();
     mocks.confirmDialog.mockResolvedValue(true);
     mocks.draggingKey = "node:US Source";
+    mocks.formFields = [];
     mocks.generatedProxyGroups = [
       { name: "Media", proxies: ["DIRECT", "US Source", "Japan Source"] },
       { name: "Select", proxies: ["US Source"] },
@@ -151,6 +156,30 @@ describe("ProxyGroupAdvancedPanel interactions", () => {
       testInterval: 300,
       ruleProviderBaseUrl: "https://rules.example",
     };
+  });
+
+  it("delegates regex field spacing to the shared FormField default", () => {
+    const tree = ProxyGroupAdvancedPanel({
+      target: { kind: "custom", id: "media", name: "Media" },
+      advanced: {},
+      onChange: vi.fn(),
+      rulesCount: 0,
+      rulesContent: null,
+    });
+
+    flattenElements(tree);
+
+    expect(
+      mocks.formFields.map((field) => ({
+        label: React.isValidElement(field.label)
+          ? (field.label.props as { children?: React.ReactNode }).children
+          : field.label,
+        className: field.className,
+      })),
+    ).toEqual([
+      { label: "包含正则（可选）", className: undefined },
+      { label: "排除正则（可选）", className: undefined },
+    ]);
   });
 
   it("fires native source, region, member, and drag callbacks", () => {

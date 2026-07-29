@@ -78,6 +78,7 @@ function meaningfulState(overrides: Record<string, unknown> = {}) {
     cnIpNoResolve: false,
     experimentalCnUseCnRuleSet: true,
     listenerPorts: { "Node A": 41000 },
+    groupListeners: [{ id: "gl-1", target: { kind: "module", id: "auto" }, port: 7891 }],
     ...overrides,
   } as any;
 }
@@ -169,6 +170,7 @@ describe("auth config handoff", () => {
       cnIpNoResolve: false,
       experimentalCnUseCnRuleSet: true,
       listenerPorts: { "Node A": 41000 },
+      groupListeners: [{ id: "gl-1", target: { kind: "module", id: "auto" }, port: 7891 }],
     });
     expect(storage.removeItem).toHaveBeenCalledWith(AUTH_CONFIG_HANDOFF_STORAGE_NAME);
   });

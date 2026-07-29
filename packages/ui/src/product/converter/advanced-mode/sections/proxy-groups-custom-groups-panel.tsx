@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check, Trash2 } from "lucide-react";
 import { Button } from "@subboost/ui/components/ui/button";
+import { confirmDialog } from "@subboost/ui/components/ui/confirm-dialog";
 import { Input } from "@subboost/ui/components/ui/input";
 import { toast } from "@subboost/ui/components/ui/toaster";
 import { PROXY_GROUP_MODULES, type ProxyGroupModule } from "@subboost/core/generator/proxy-groups";
@@ -34,6 +35,8 @@ import {
   type ProxyGroupNameDraft,
 } from "./proxy-group-name-editor";
 import { ProxyGroupsModuleCard } from "./proxy-groups-module-card";
+import { GroupAdvancedSettingsDialog } from "./group-advanced-settings-dialog";
+import { findGroupListenerBinding } from "./group-listener-settings";
 
 export function ProxyGroupsCustomGroupsPanel({
   advancedMode = false,
@@ -58,6 +61,11 @@ export function ProxyGroupsCustomGroupsPanel({
     moveModuleRule,
     removeModuleRule,
     dialerProxyGroups = [],
+    groupListeners = [],
+    setGroupListener,
+    dnsYaml,
+    mixedPort,
+    listenerPorts = {},
   } = useConfigStore();
 
   const [expandedCustomGroups, setExpandedCustomGroups] = React.useState<Set<string>>(new Set());
@@ -69,7 +77,13 @@ export function ProxyGroupsCustomGroupsPanel({
   const [editingCustomGroupId, setEditingCustomGroupId] = React.useState<string | null>(null);
   const [editingCustomGroupName, setEditingCustomGroupName] = React.useState("");
   const [editingCustomGroupDescription, setEditingCustomGroupDescription] = React.useState("");
+  // 注意：新增 useState 追加在末尾，保持既有测试的 setter 索引稳定
+  const [settingsGroupId, setSettingsGroupId] = React.useState<string | null>(null);
   const interactions = useProductInteractionAdapter();
+  const listenerConflictState = React.useMemo(
+    () => ({ dnsYaml, mixedPort, listenerPorts, groupListeners }),
+    [dnsYaml, mixedPort, listenerPorts, groupListeners]
+  );
 
   const getAllGroupNamesForUniqCheck = React.useCallback(() => {
     const names: string[] = [];
@@ -424,7 +438,26 @@ export function ProxyGroupsCustomGroupsPanel({
                   setEditingCustomGroupDescription("");
                 }}
                 onCommitEditing={commitCustomRename}
-                onHide={() => removeCustomProxyGroup(group.id)}
+                onHide={async () => {
+                  const listenerBinding = findGroupListenerBinding(groupListeners, { kind: "custom", id: group.id });
+                  if (listenerBinding) {
+                    const ok = await confirmDialog({
+                      title: `确认删除「${group.name}」？`,
+                      description: (
+                        <span className="block pt-2">
+                          <span className="block rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 leading-6 text-amber-100/90">
+                            <span className="font-medium text-amber-200">警告：</span>
+                            该分组已绑定监听端口 {listenerBinding.port}，删除分组会一并移除该监听端口。
+                          </span>
+                        </span>
+                      ),
+                      confirmText: "删除",
+                      variant: "warning",
+                    });
+                    if (!ok) return;
+                  }
+                  removeCustomProxyGroup(group.id);
+                }}
                 extraRules={[]}
                 ruleSetsByTarget={{}}
                 hiddenPresetRuleIds={{}}
@@ -456,13 +489,10 @@ export function ProxyGroupsCustomGroupsPanel({
                 description={description}
                 groupType={group.groupType as ProxyGroupTypeMenuValue}
                 strategy={group.strategy}
-                onChangeGroupType={({ groupType, strategy }) =>
-                  updateCustomProxyGroup(group.id, {
-                    groupType: groupType as ProxyGroupGroupType,
-                    ...(groupType === "load-balance"
-                      ? { strategy: strategy ?? group.strategy ?? DEFAULT_LOAD_BALANCE_STRATEGY }
-                      : { strategy: undefined }),
-                  })
+                onOpenAdvancedSettings={() => setSettingsGroupId(group.id)}
+                advancedSettingsActive={
+                  group.groupType !== "select" ||
+                  Boolean(findGroupListenerBinding(groupListeners, { kind: "custom", id: group.id }))
                 }
                 rulesContentOverride={
                   totalRules === 0 ? (
@@ -494,6 +524,40 @@ export function ProxyGroupsCustomGroupsPanel({
           })}
         </div>
       )}
+
+      {(() => {
+        const settingsGroup = settingsGroupId
+          ? customProxyGroups.find((group) => group.id === settingsGroupId)
+          : undefined;
+        if (!settingsGroup) return null;
+        const target = { kind: "custom" as const, id: settingsGroup.id };
+        return (
+          <GroupAdvancedSettingsDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setSettingsGroupId(null);
+            }}
+            groupName={settingsGroup.name}
+            groupType={settingsGroup.groupType}
+            strategy={settingsGroup.strategy}
+            listenerTarget={target}
+            listenerBinding={findGroupListenerBinding(groupListeners, target)}
+            conflictState={listenerConflictState}
+            onSave={({ groupType, strategy, listener }) => {
+              updateCustomProxyGroup(settingsGroup.id, {
+                groupType: groupType as ProxyGroupGroupType,
+                ...(groupType === "load-balance"
+                  ? { strategy: strategy ?? settingsGroup.strategy ?? DEFAULT_LOAD_BALANCE_STRATEGY }
+                  : { strategy: undefined }),
+              });
+              setGroupListener(
+                target,
+                listener ? { port: listener.port, enabled: listener.enabled, allowLan: listener.allowLan } : null
+              );
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

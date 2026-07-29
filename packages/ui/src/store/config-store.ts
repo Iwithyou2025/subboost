@@ -14,6 +14,7 @@ import { createCustomActions } from "./config-store/actions/custom-actions";
 import { createProxyGroupActions } from "./config-store/actions/proxy-group-actions";
 import { createDialerActions } from "./config-store/actions/dialer-actions";
 import { createSettingsActions } from "./config-store/actions/settings-actions";
+import { createGroupListenerActions } from "./config-store/actions/group-listener-actions";
 import { createHistoryActions } from "./config-store/actions/history-actions";
 import {
   CONFIG_DRAFT_GUEST_STORAGE_NAME,
@@ -73,6 +74,7 @@ export const useConfigStore = create<ConfigState & ConfigActions>()(
         ...createProxyGroupActions(set, get, setAndGenerateConfig),
         ...createDialerActions(set, get, setAndGenerateConfig),
         ...createSettingsActions(set, get, setAndGenerateConfig),
+        ...createGroupListenerActions(set, get, setAndGenerateConfig),
         ...createHistoryActions(set, get),
       };
     },

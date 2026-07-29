@@ -4,6 +4,7 @@ import * as React from "react";
 import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { Badge } from "@subboost/ui/components/ui/badge";
 import { Button } from "@subboost/ui/components/ui/button";
+import { confirmDialog } from "@subboost/ui/components/ui/confirm-dialog";
 import { IconButton } from "@subboost/ui/components/ui/icon-button";
 import {
   DropdownMenu,
@@ -34,8 +35,9 @@ import { ProxyGroupSummary } from "./proxy-group-summary";
 import {
   getLoadBalanceStrategyLabel,
   getProxyGroupTypeLabel,
-  ProxyGroupTypeMenu,
 } from "./proxy-group-type-menu";
+import { GroupAdvancedSettingsDialog } from "./group-advanced-settings-dialog";
+import { findGroupListenerBinding } from "./group-listener-settings";
 
 type DialerSelectableNode = {
   name: string;
@@ -63,6 +65,11 @@ export function DialerProxyGroupsSection({
     updateDialerProxyGroup,
     addNodeToDialerGroup,
     removeNodeFromDialerGroup,
+    groupListeners = [],
+    setGroupListener,
+    dnsYaml,
+    mixedPort,
+    listenerPorts = {},
   } = useConfigStore();
 
   const [expandedDialerGroups, setExpandedDialerGroups] = React.useState<Set<string>>(new Set());
@@ -78,6 +85,11 @@ export function DialerProxyGroupsSection({
   });
   const [relaySearchByGroupId, setRelaySearchByGroupId] = React.useState<Record<string, string>>({});
   const [targetSearchByGroupId, setTargetSearchByGroupId] = React.useState<Record<string, string>>({});
+  const [settingsDialerGroupId, setSettingsDialerGroupId] = React.useState<string | null>(null);
+  const listenerConflictState = React.useMemo(
+    () => ({ dnsYaml, mixedPort, listenerPorts, groupListeners }),
+    [dnsYaml, mixedPort, listenerPorts, groupListeners]
+  );
   const interactions = useProductInteractionAdapter();
   const effectiveNodes = React.useMemo(
     () => resolveNodeNameFilter(nodes, nodeNameFilter).effectiveNodes,
@@ -397,37 +409,49 @@ export function DialerProxyGroupsSection({
                       }}
                       onClick={(e) => e.stopPropagation()}
                     />
-                    <ProxyGroupTypeMenu
-                      value={dialerGroupType}
-                      strategy={dialerStrategy}
-                      contentAlign="end"
-                      onChange={({ groupType, strategy }) =>
-                        updateDialerProxyGroup(group.id, {
-                          type: groupType,
-                          ...(groupType === "load-balance"
-                            ? { strategy: strategy ?? group.strategy ?? DEFAULT_LOAD_BALANCE_STRATEGY }
-                            : { strategy: undefined }),
-                        })
-                      }
-                      trigger={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="pointer-events-auto relative z-10 h-7 shrink-0 px-2 text-white/35 hover:text-indigo-200"
-                          title={`类型：${dialerTypeLabel}`}
-                          aria-label={`修改 ${group.name} 类型`}
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <SlidersHorizontal className="h-3.5 w-3.5" />
-                        </Button>
-                      }
-                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="pointer-events-auto relative z-10 h-7 shrink-0 px-2 text-white/35 hover:text-indigo-200"
+                      title={`高级设置（类型：${dialerTypeLabel}）`}
+                      aria-label={`打开 ${group.name} 高级设置`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSettingsDialerGroupId(group.id);
+                      }}
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      {(dialerGroupType !== "select" ||
+                        Boolean(findGroupListenerBinding(groupListeners, { kind: "dialer", id: group.id }))) && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-indigo-400"
+                        />
+                      )}
+                    </Button>
                     <IconButton
                       label={`删除 ${group.name} 中转组`}
                       variant="ghost"
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
+                        const listenerBinding = findGroupListenerBinding(groupListeners, { kind: "dialer", id: group.id });
+                        if (listenerBinding) {
+                          const ok = await confirmDialog({
+                            title: `确认删除「${group.name}」？`,
+                            description: (
+                              <span className="block pt-2">
+                                <span className="block rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 leading-6 text-amber-100/90">
+                                  <span className="font-medium text-amber-200">警告：</span>
+                                  该中转组已绑定监听端口 {listenerBinding.port}，删除中转组会一并移除该监听端口。
+                                </span>
+                              </span>
+                            ),
+                            confirmText: "删除",
+                            variant: "warning",
+                          });
+                          if (!ok) return;
+                        }
                         removeDialerProxyGroup(group.id);
                       }}
                       className="pointer-events-auto relative z-10 h-7 w-7 p-1 text-white/30 hover:text-red-400"
@@ -640,6 +664,40 @@ export function DialerProxyGroupsSection({
           </DropdownMenu>
         </div>
       )}
+
+      {(() => {
+        const settingsGroup = settingsDialerGroupId
+          ? dialerProxyGroups.find((group) => group.id === settingsDialerGroupId)
+          : undefined;
+        if (!settingsGroup) return null;
+        const target = { kind: "dialer" as const, id: settingsGroup.id };
+        return (
+          <GroupAdvancedSettingsDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setSettingsDialerGroupId(null);
+            }}
+            groupName={settingsGroup.name}
+            groupType={settingsGroup.type}
+            strategy={settingsGroup.strategy}
+            listenerTarget={target}
+            listenerBinding={findGroupListenerBinding(groupListeners, target)}
+            conflictState={listenerConflictState}
+            onSave={({ groupType, strategy, listener }) => {
+              updateDialerProxyGroup(settingsGroup.id, {
+                type: groupType,
+                ...(groupType === "load-balance"
+                  ? { strategy: strategy ?? settingsGroup.strategy ?? DEFAULT_LOAD_BALANCE_STRATEGY }
+                  : { strategy: undefined }),
+              });
+              setGroupListener(
+                target,
+                listener ? { port: listener.port, enabled: listener.enabled, allowLan: listener.allowLan } : null
+              );
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

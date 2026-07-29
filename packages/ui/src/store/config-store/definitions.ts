@@ -4,6 +4,8 @@ import type {
   CustomProxyGroup,
   CustomRule,
   CustomRuleSet,
+  GroupListenerBinding,
+  GroupListenerTarget,
   ProxyGroupAdvancedConfig,
   TemplateType,
 } from "@subboost/core/types/config";
@@ -34,7 +36,7 @@ import {
 
 export { DEFAULT_BASE_CONFIG_YAML };
 export type RuleSetDraft = Omit<CustomRuleSet, "target">;
-export type { BuiltinRuleEdits, CustomRuleSet, ProxyGroupAdvancedConfig };
+export type { BuiltinRuleEdits, CustomRuleSet, GroupListenerBinding, GroupListenerTarget, ProxyGroupAdvancedConfig };
 export type { DialerProxyGroup, SubBoostTemplateConfig } from "@subboost/core/types/template-config";
 export type { NodeNameFilterConfig } from "@subboost/core/subscription/node-name-filter";
 
@@ -225,6 +227,9 @@ export interface ConfigState {
   // 节点监听端口（用于生成 listeners）
   listenerPorts: Record<string, number>;
 
+  // 分组监听：按稳定 ID 给策略组绑定 mixed inbound 端口（用于生成 listeners）
+  groupListeners: GroupListenerBinding[];
+
   // 生成结果
   generatedYaml: string;
   generatedYamlError: string | null;
@@ -314,6 +319,10 @@ export interface ConfigActions {
   setExperimentalCnUseCnRuleSet: (value: boolean) => void;
   setListenerPort: (nodeName: string, port: number | null) => void;
   bulkSetListenerPorts: (patch: Record<string, number | null>) => void;
+  setGroupListener: (
+    target: GroupListenerTarget,
+    config: { port: number; enabled?: boolean; allowLan?: boolean } | null
+  ) => void;
 
   // 生成配置
   generateConfig: () => string;
@@ -378,6 +387,7 @@ export const initialState: ConfigState = {
   cnIpNoResolve: DEFAULT_SUBBOOST_CONFIG.cnIpNoResolve,
   experimentalCnUseCnRuleSet: DEFAULT_SUBBOOST_CONFIG.experimentalCnUseCnRuleSet,
   listenerPorts: {},
+  groupListeners: [],
   generatedYaml: "",
   generatedYamlError: null,
   history: [],
