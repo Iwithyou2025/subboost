@@ -95,14 +95,8 @@ export function DialerProxyGroupsSection({
     () => resolveNodeNameFilter(nodes, nodeNameFilter).effectiveNodes,
     [nodeNameFilter, nodes],
   );
-  const rawNodeNameSet = React.useMemo(
-    () => new Set(nodes.map((node) => node.name)),
-    [nodes],
-  );
-  const effectiveNodeNameSet = React.useMemo(
-    () => new Set(effectiveNodes.map((node) => node.name)),
-    [effectiveNodes],
-  );
+  const rawNodeNameSet = React.useMemo(() => new Set(nodes.map((node) => node.name)), [nodes]);
+  const effectiveNodeNameSet = React.useMemo(() => new Set(effectiveNodes.map((node) => node.name)), [effectiveNodes]);
 
   const toggleDialerGroupExpand = (groupId: string) => {
     setExpandedDialerGroups((prev) => {
