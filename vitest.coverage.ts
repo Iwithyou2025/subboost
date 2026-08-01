@@ -2,10 +2,10 @@ import { defineConfig, mergeConfig } from "vitest/config";
 import baseConfig from "./vitest.config";
 
 const coverageThresholds = {
-  lines: 90,
-  statements: 90,
-  functions: 90,
-  branches: 90,
+  lines: 97,
+  statements: 97,
+  functions: 97,
+  branches: 97,
 } as const;
 
 export default mergeConfig(
