@@ -10,6 +10,7 @@ import {
 describe("local pinned HTTP transport edge behavior", () => {
   let server: Server;
   let port = 0;
+  let resetOnceRequestCount = 0;
   const observedMethods: string[] = [];
 
   beforeAll(async () => {
@@ -17,6 +18,17 @@ describe("local pinned HTTP transport edge behavior", () => {
       observedMethods.push(request.method || "");
       const pathname = new URL(request.url || "/", "http://local.subboost.test").pathname;
 
+      if (pathname === "/reset-once") {
+        resetOnceRequestCount += 1;
+        if (resetOnceRequestCount === 1) {
+          response.destroy();
+          return;
+        }
+      }
+      if (pathname === "/reset-always") {
+        response.destroy();
+        return;
+      }
       if (pathname === "/redirect") {
         response.writeHead(302, { Location: "/next", "Set-Cookie": ["a=1", "b=2"] });
         response.end("ignored redirect body");
@@ -132,18 +144,21 @@ describe("local pinned HTTP transport edge behavior", () => {
   });
 
   it("tries the next validated address after a connection failure", async () => {
-    await expect(request("/plain", {
-      addresses: ["127.0.0.2", "127.0.0.1"],
+    resetOnceRequestCount = 0;
+    await expect(request("/reset-once", {
+      addresses: ["127.0.0.1", "127.0.0.1"],
     })).resolves.toMatchObject({ status: 200, content: "ss://node" });
   });
 
   it("surfaces the last connection error and stops immediately after abort", async () => {
-    await expect(request("/plain", { addresses: ["127.0.0.2"] })).rejects.toBeInstanceOf(Error);
+    await expect(request("/reset-always", {
+      addresses: ["127.0.0.1"],
+    })).rejects.toBeInstanceOf(Error);
 
     const controller = new AbortController();
     controller.abort();
     await expect(request("/plain", {
-      addresses: ["127.0.0.2", "127.0.0.1"],
+      addresses: ["127.0.0.1"],
       signal: controller.signal,
     })).rejects.toMatchObject({ name: "AbortError" });
   });
