@@ -165,11 +165,11 @@ describe("RulesManagementSection", () => {
       {
         key: "custom-rule:ip",
         editable: true,
-        summary: "35.212.230.0/24",
+        summary: "203.0.113.0/24",
         sourceLabel: "自定义规则",
         target: "🚀 节点选择",
         noResolve: false,
-        text: "IP-CIDR,35.212.230.0/24,🚀 节点选择",
+        text: "IP-CIDR,203.0.113.0/24,🚀 节点选择",
       },
       {
         key: "special:match",
@@ -224,14 +224,14 @@ describe("RulesManagementSection", () => {
         element.props.className.includes("min-w-[8.75rem]"),
     )[0];
 
-    expect(collectText(titleLine)).toContain("35.212.230.0/24");
+    expect(collectText(titleLine)).toContain("203.0.113.0/24");
     expect(collectText(titleLine)).toContain("自定义规则");
     expect(collectText(titleLine)).toContain("🚀 节点选择");
-    expect(collectText(titleLine)).not.toContain("IP-CIDR 35.212.230.0/24");
-    expect(collectText(detail)).toBe("IP-CIDR,35.212.230.0/24");
+    expect(collectText(titleLine)).not.toContain("IP-CIDR 203.0.113.0/24");
+    expect(collectText(detail)).toBe("IP-CIDR,203.0.113.0/24");
     expect(collectText(detail)).not.toContain("🚀 节点选择");
     expect(collectText(detail)).not.toContain("no-resolve");
-    expect(detail.props.title).toBe("IP-CIDR,35.212.230.0/24,🚀 节点选择");
+    expect(detail.props.title).toBe("IP-CIDR,203.0.113.0/24,🚀 节点选择");
     expect(entryRow.props.className).toContain("border-white/10");
     expect(entryRow.props.className).toContain("bg-white/5");
     expect(row.props.className).not.toContain("sm:grid");

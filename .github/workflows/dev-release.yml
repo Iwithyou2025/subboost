@@ -17,6 +17,7 @@ on:
       - "scripts/**"
       - "tsconfig.json"
       - "vitest.config.ts"
+      - "vitest.coverage.ts"
       - "vitest.core.config.ts"
 
 permissions:
@@ -73,7 +74,7 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
-      - run: npm run test:unit
+      - run: npm run test:coverage
       - run: npm run check:local-app
 
   build-image:
