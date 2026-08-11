@@ -7,6 +7,7 @@ import type { ParsedNode } from "@subboost/core/types/node";
 import {
   buildManualRefreshFailureResponse,
   buildManualRefreshSuccessResponseBody,
+  createResetSubscriptionAutoUpdateState,
   normalizeSubscriptionConfigForPersistence,
   normalizeSubscriptionInfoForPersistence,
   normalizeSubscriptionName,
@@ -49,6 +50,10 @@ export type SubscriptionRow = {
     failureSourceState: string | null;
     lastFailedAt: Date | null;
     lastAttemptedAt: Date | null;
+    nodeQuotaFailureCount: number;
+    lastNodeQuotaExceededAt: Date | null;
+    lastNodeQuotaActual: number | null;
+    lastNodeQuotaLimit: number | null;
     disabledAt: Date | null;
     disabledReason: string | null;
     disabledPreviousInterval: number | null;
@@ -75,6 +80,10 @@ export type SubscriptionSummary = {
     externalFailureCount: number;
     lastFailedAt: string | null;
     lastAttemptedAt: string | null;
+    nodeQuotaFailureCount: number;
+    lastNodeQuotaExceededAt: string | null;
+    lastNodeQuotaActual: number | null;
+    lastNodeQuotaLimit: number | null;
     disabledAt: string | null;
     disabledReason: string | null;
     disabledPreviousInterval: number | null;
@@ -275,15 +284,7 @@ export async function updateSubscription(ownerId: string, id: string, body: unkn
       await tx.subscriptionAutoUpdateState.upsert({
         where: { subscriptionId: current.id },
         create: { subscriptionId: current.id },
-        update: {
-          externalFailureCount: 0,
-          failureSourceState: null,
-          lastFailedAt: null,
-          lastAttemptedAt: null,
-          disabledAt: null,
-          disabledReason: null,
-          disabledPreviousInterval: null,
-        },
+        update: createResetSubscriptionAutoUpdateState(),
       });
     }
     return tx.subscription.update({
@@ -368,15 +369,7 @@ async function persistRefreshSuccess(params: {
     await tx.subscriptionAutoUpdateState.upsert({
       where: { subscriptionId: params.subscriptionId },
       create: { subscriptionId: params.subscriptionId },
-      update: {
-        externalFailureCount: 0,
-        failureSourceState: null,
-        lastFailedAt: null,
-        lastAttemptedAt: null,
-        disabledAt: null,
-        disabledReason: null,
-        disabledPreviousInterval: null,
-      },
+      update: createResetSubscriptionAutoUpdateState(),
     });
     return true;
   });

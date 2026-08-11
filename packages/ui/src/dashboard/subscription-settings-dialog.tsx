@@ -20,6 +20,11 @@ import {
   type AutoUpdateIntervalPolicy,
 } from "@subboost/core/subscription/auto-update-interval";
 import type { Subscription } from "./dashboard-types";
+import {
+  buildNodeQuotaWarning,
+  buildQuotaDisabledRecoveryText,
+  isNodeQuotaAutoUpdateDisabled,
+} from "./dashboard-auto-update-warning";
 
 type Props = {
   open: boolean;
@@ -57,6 +62,8 @@ export function SubscriptionSettingsDialog({
   autoUpdatePolicy,
 }: Props) {
   const policy = autoUpdatePolicy ?? resolveAutoUpdateIntervalPolicy(userIsAdmin);
+  const quotaWarning = subscription ? buildNodeQuotaWarning(subscription.autoUpdateState) : null;
+  const quotaDisabled = subscription ? isNodeQuotaAutoUpdateDisabled(subscription.autoUpdateState) : false;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -100,7 +107,15 @@ export function SubscriptionSettingsDialog({
 
           {!autoUpdateEnabled && subscription?.autoUpdateState.disabledAt && subscription.autoUpdateState.disabledReason && (
             <div className="rounded-md border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-100">
-              自动更新已关闭：{subscription.autoUpdateState.disabledReason}。当前可用配置仍会保留；检查订阅 URL 后可重新开启自动更新。
+              {quotaDisabled
+                ? `自动更新已关闭：${buildQuotaDisabledRecoveryText(subscription.autoUpdateState)}`
+                : `自动更新已关闭：${subscription.autoUpdateState.disabledReason}。当前可用配置仍会保留；检查订阅 URL 后可重新开启自动更新。`}
+            </div>
+          )}
+
+          {autoUpdateEnabled && quotaWarning && (
+            <div className="rounded-md border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-100">
+              {quotaWarning}。当前可用配置仍会保留；恢复到额度内后，下一次成功更新会自动清除这条警告。
             </div>
           )}
 

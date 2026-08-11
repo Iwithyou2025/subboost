@@ -137,6 +137,10 @@ function row(overrides: Partial<SubscriptionRow> = {}): SubscriptionRow {
       failureSourceState: null,
       lastFailedAt: new Date("2026-06-01T05:00:00.000Z"),
       lastAttemptedAt: new Date("2026-06-01T06:00:00.000Z"),
+      nodeQuotaFailureCount: 2,
+      lastNodeQuotaExceededAt: new Date("2026-06-01T06:30:00.000Z"),
+      lastNodeQuotaActual: 120,
+      lastNodeQuotaLimit: 100,
       disabledAt: null,
       disabledReason: null,
       disabledPreviousInterval: null,
@@ -201,6 +205,10 @@ describe("local subscription service", () => {
         externalFailureCount: 2,
         lastFailedAt: "2026-06-01T05:00:00.000Z",
         lastAttemptedAt: "2026-06-01T06:00:00.000Z",
+        nodeQuotaFailureCount: 2,
+        lastNodeQuotaExceededAt: "2026-06-01T06:30:00.000Z",
+        lastNodeQuotaActual: 120,
+        lastNodeQuotaLimit: 100,
       },
     });
 
@@ -237,6 +245,10 @@ describe("local subscription service", () => {
         externalFailureCount: 0,
         lastFailedAt: null,
         lastAttemptedAt: null,
+        nodeQuotaFailureCount: 0,
+        lastNodeQuotaExceededAt: null,
+        lastNodeQuotaActual: null,
+        lastNodeQuotaLimit: null,
         disabledAt: null,
         disabledReason: null,
         disabledPreviousInterval: null,
@@ -456,6 +468,10 @@ describe("local subscription service", () => {
         failureSourceState: null,
         lastFailedAt: null,
         lastAttemptedAt: null,
+        nodeQuotaFailureCount: 0,
+        lastNodeQuotaExceededAt: null,
+        lastNodeQuotaActual: null,
+        lastNodeQuotaLimit: null,
         disabledAt: null,
         disabledReason: null,
         disabledPreviousInterval: null,
@@ -564,6 +580,16 @@ describe("local subscription service", () => {
       body: { ok: true, nodeCount: 1 },
     });
     expect(mocks.prisma.$transaction).toHaveBeenCalled();
+    expect(mocks.prisma.subscriptionAutoUpdateState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          nodeQuotaFailureCount: 0,
+          lastNodeQuotaExceededAt: null,
+          lastNodeQuotaActual: null,
+          lastNodeQuotaLimit: null,
+        }),
+      })
+    );
 
     mocks.prisma.subscription.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(refreshSubscription("owner-1", "sub-1")).resolves.toEqual({
