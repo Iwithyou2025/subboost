@@ -20,7 +20,12 @@ export function stableJsonStringify(value: unknown): string {
     const obj = input as Record<string, unknown>;
     const keys = Object.keys(obj).sort();
     const out: Record<string, unknown> = {};
-    for (const key of keys) out[key] = normalize(obj[key]);
+    for (const key of keys) {
+      // 与 buildNodeContentKey 顶层行为一致：递归忽略 SubBoost 内部 _ 前缀字段
+      // （如 reality-opts._spider-x，机场每次更新轮换会导致内容指纹变化、节点匹配失败）
+      if (key.startsWith("_")) continue;
+      out[key] = normalize(obj[key]);
+    }
     return out;
   };
 
