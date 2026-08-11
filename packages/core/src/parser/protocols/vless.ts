@@ -264,9 +264,14 @@ export function parseVLESS(uri: string): VLESSNode {
   })();
   const pbk = pickQueryValue(params, ["pbk", "public-key", "public_key", "publicKey"]);
   const explicitSecurity = (params.get("security") || "").trim().toLowerCase();
+  const usesImplicitShadowrocketTls =
+    !explicitSecurity &&
+    !pbk &&
+    normalized.isShadowrocket &&
+    parseBoolish(params.get("tls")) === true;
   const security =
     explicitSecurity ||
-    (pbk ? "reality" : normalized.isShadowrocket && parseBoolish(params.get("tls")) ? "tls" : "none");
+    (pbk ? "reality" : usesImplicitShadowrocketTls ? "tls" : "none");
   const flow = (() => {
     const direct = params.get("flow") || "";
     if (direct.trim()) return direct.trim();
@@ -334,6 +339,7 @@ export function parseVLESS(uri: string): VLESSNode {
     if (list && list.length > 0) node.alpn = list;
   }
   if (clientFingerprint) node["client-fingerprint"] = clientFingerprint;
+  else if (usesImplicitShadowrocketTls) node["client-fingerprint"] = "chrome";
 
   if (params.get("pcs")) {
     (node as unknown as Record<string, unknown>).pcs = params.get("pcs");

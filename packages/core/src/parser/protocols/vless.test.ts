@@ -110,6 +110,7 @@ describe("parseVLESS", () => {
       uuid: UUID,
       tls: true,
       flow: "xtls-rprx-vision",
+      "client-fingerprint": "chrome",
       network: "ws",
       "ws-opts": {
         path: "/ws",
@@ -119,7 +120,6 @@ describe("parseVLESS", () => {
       },
     });
     expect(node).not.toHaveProperty("reality-opts");
-    expect(node).not.toHaveProperty("client-fingerprint");
 
     const encodedWithoutPrefix = Buffer.from(`${UUID}@shadow-simple.example.com:443`).toString("base64url");
     expect(parseVLESS(`vless://${encodedWithoutPrefix}?obfs=websocket&tls=1&xtls=1&tls-verification=false&remark=SimpleSR`)).toMatchObject({
@@ -127,6 +127,7 @@ describe("parseVLESS", () => {
       server: "shadow-simple.example.com",
       uuid: UUID,
       flow: "xtls-rprx-direct",
+      "client-fingerprint": "chrome",
       "skip-cert-verify": true,
       network: "ws",
     });
@@ -162,6 +163,7 @@ describe("parseVLESS", () => {
       uuid: UUID,
       tls: true,
       servername: "front.example.com",
+      "client-fingerprint": "chrome",
       network: "xhttp",
       "xhttp-opts": {
         path: "/xhttp",
@@ -253,6 +255,7 @@ describe("parseVLESS", () => {
       },
     });
     expect(explicitTls).not.toHaveProperty("reality-opts");
+    expect(explicitTls).not.toHaveProperty("client-fingerprint");
   });
 
   it("parses TCP, H2, HTTP Upgrade, and Reality detail variants", () => {
