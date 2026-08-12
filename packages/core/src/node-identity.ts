@@ -7,7 +7,10 @@ export interface NodeContentKeyOptions {
   ignoreServername?: boolean;
 }
 
-export function stableJsonStringify(value: unknown): string {
+function stableJsonStringifyWithKeyFilter(
+  value: unknown,
+  includeKey: (key: string) => boolean
+): string {
   const seen = new WeakSet<object>();
 
   const normalize = (input: unknown): unknown => {
@@ -21,15 +24,17 @@ export function stableJsonStringify(value: unknown): string {
     const keys = Object.keys(obj).sort();
     const out: Record<string, unknown> = {};
     for (const key of keys) {
-      // 与 buildNodeContentKey 顶层行为一致：递归忽略 SubBoost 内部 _ 前缀字段
-      // （如 reality-opts._spider-x，机场每次更新轮换会导致内容指纹变化、节点匹配失败）
-      if (key.startsWith("_")) continue;
+      if (!includeKey(key)) continue;
       out[key] = normalize(obj[key]);
     }
     return out;
   };
 
   return JSON.stringify(normalize(value));
+}
+
+export function stableJsonStringify(value: unknown): string {
+  return stableJsonStringifyWithKeyFilter(value, () => true);
 }
 
 export function buildNodeContentKey(
@@ -48,7 +53,9 @@ export function buildNodeContentKey(
     })
   );
 
-  return stableJsonStringify(filtered);
+  // 节点内部字段不属于内容身份；例如机场轮换 reality-opts._spider-x
+  // 时，节点的稳定身份不应随之变化。
+  return stableJsonStringifyWithKeyFilter(filtered, (key) => !key.startsWith("_"));
 }
 
 export function buildScopedNodeIdentityKey(scope: string, node: ParsedNode): string {

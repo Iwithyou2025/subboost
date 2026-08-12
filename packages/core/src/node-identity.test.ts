@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ParsedNode } from "./types/node";
-import { buildNodeContentKey } from "./node-identity";
+import { buildNodeContentKey, stableJsonStringify } from "./node-identity";
 
 // 测试数据全部为虚构，不包含任何真实订阅信息
 function realityNode(name: string, uuid: string, spiderX: string, patch: Record<string, unknown> = {}): ParsedNode {
@@ -25,6 +25,16 @@ function realityNode(name: string, uuid: string, spiderX: string, patch: Record<
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
+
+describe("stableJsonStringify", () => {
+  it("preserves nested underscore-prefixed keys for generic serialization", () => {
+    const first = stableJsonStringify({ nested: { _nonce: "a", value: 1 } });
+    const second = stableJsonStringify({ nested: { _nonce: "b", value: 1 } });
+
+    expect(first).toBe('{"nested":{"_nonce":"a","value":1}}');
+    expect(second).not.toBe(first);
+  });
+});
 
 describe("buildNodeContentKey", () => {
   it("ignores nested internal underscore fields such as reality-opts._spider-x", () => {

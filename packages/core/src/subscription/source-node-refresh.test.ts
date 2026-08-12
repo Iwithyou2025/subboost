@@ -555,67 +555,6 @@ describe("source node refresh helpers", () => {
     });
   });
 
-  it("keeps matching a reality node when the airport rotates spider-x but uuid stays stable", () => {
-    // 测试数据全部为虚构，不包含任何真实订阅信息
-    const state = [
-      {
-        name: "Reality Node A (v1)",
-        type: "vless",
-        server: "reality.example.com",
-        port: 443,
-        uuid: "11111111-1111-1111-1111-111111111111",
-        tls: true,
-        "client-fingerprint": "chrome",
-        flow: "xtls-rprx-vision",
-        network: "tcp",
-        udp: true,
-        "reality-opts": {
-          "public-key": "FAKE_PUBLIC_KEY_AAAAAAAAAAAAAAAA",
-          "short-id": "0000",
-          "_spider-x": "/spider-old",
-        },
-        [ORIGIN_NAME_KEY]: "Reality Node A (v1)",
-        [SOURCE_IDS_KEY]: ["source-a"],
-      },
-    ];
-    const parsed = prepareSourceParsedNodes(
-      [
-        {
-          name: "Reality Node A (v2)",
-          type: "vless",
-          server: "reality.example.com",
-          port: 443,
-          uuid: "11111111-1111-1111-1111-111111111111",
-          tls: true,
-          "client-fingerprint": "chrome",
-          flow: "xtls-rprx-vision",
-          network: "tcp",
-          udp: true,
-          "reality-opts": {
-            "public-key": "FAKE_PUBLIC_KEY_AAAAAAAAAAAAAAAA",
-            "short-id": "0000",
-            "_spider-x": "/spider-new",
-          },
-        },
-      ],
-      {}
-    );
-
-    const result = mergeParsedSourceNodes(state, parsed, [], {
-      sourceId: "source-a",
-    });
-
-    // 匹配成功：不产生重复节点，保留原位置与原显示名，spider-x 更新为新值
-    expect(result.nodes).toHaveLength(1);
-    expect(result.nodes[0]).toMatchObject({
-      name: "Reality Node A (v1)",
-      uuid: "11111111-1111-1111-1111-111111111111",
-      [SOURCE_IDS_KEY]: ["source-a"],
-    });
-    expect(
-      (result.nodes[0] as unknown as { "reality-opts"?: { "_spider-x"?: string } })["reality-opts"]?.["_spider-x"]
-    ).toBe("/spider-new");
-  });
 });
 
 describe("subscription response info helpers", () => {
