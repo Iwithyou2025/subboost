@@ -194,6 +194,19 @@ describe("subscription auto-update state helpers", () => {
       lastNodeQuotaActual: null,
       lastNodeQuotaLimit: null,
     });
+
+    const preserveWithoutCurrentState = buildAutomaticRefreshAutoUpdateState({
+      failureState: null,
+      attemptedAt,
+      previousAutoUpdateInterval: 7200,
+      preserveNodeQuotaFailure: true,
+    });
+    expect(preserveWithoutCurrentState.state).toMatchObject({
+      nodeQuotaFailureCount: 0,
+      lastNodeQuotaExceededAt: null,
+      lastNodeQuotaActual: null,
+      lastNodeQuotaLimit: null,
+    });
   });
 
   it("derives failure reasons from failed source state when source details exist", () => {

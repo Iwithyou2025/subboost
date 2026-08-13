@@ -224,6 +224,19 @@ describe("parseVLESS", () => {
         host: "legacy.example.com",
       },
     });
+
+    const duplicateHostObfsParam = encodeURIComponent(
+      JSON.stringify({ Host: "first.example.com", host: "second.example.com" })
+    );
+    expect(
+      parseVLESS(
+        `vless://${encoded}?obfs=xhttp&tls=1&obfsParam=${duplicateHostObfsParam}#XHTTPDuplicateHost`
+      )
+    ).toMatchObject({
+      "xhttp-opts": {
+        host: "first.example.com",
+      },
+    });
   });
 
   it("infers implicit Shadowrocket Reality only from a public key", () => {
