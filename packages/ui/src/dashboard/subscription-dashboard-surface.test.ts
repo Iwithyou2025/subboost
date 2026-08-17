@@ -234,6 +234,7 @@ function stubDocumentActions() {
     style: {} as Record<string, string>,
     setAttribute: vi.fn(),
     select: vi.fn(),
+    setSelectionRange: vi.fn(),
     remove: vi.fn(),
   };
   const appendChild = vi.fn();
@@ -407,6 +408,7 @@ describe("SubscriptionDashboardSurface", () => {
     expect(dom.createElement).toHaveBeenCalledWith("textarea");
     expect(dom.textarea.value).toBe("https://example.com/sub");
     expect(dom.textarea.select).toHaveBeenCalled();
+    expect(dom.textarea.setSelectionRange).toHaveBeenCalledWith(0, dom.textarea.value.length);
     expect(dom.execCommand).toHaveBeenCalledWith("copy");
     expect(dom.textarea.remove).toHaveBeenCalled();
     expect(setters[2]).toHaveBeenCalledWith("sub-1");

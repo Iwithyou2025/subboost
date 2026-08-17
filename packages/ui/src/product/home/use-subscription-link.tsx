@@ -36,6 +36,7 @@ import {
   type ProductInteractionResult,
   type ProductMode,
 } from "@subboost/ui/product/interactions";
+import { copyTextToClipboard } from "@subboost/ui/lib/clipboard";
 
 type EditingSubscription = {
   id: string;
@@ -499,17 +500,18 @@ export function useSubscriptionLink({
   const handleCopyUrl = React.useCallback(async () => {
     if (!subscriptionUrl) return;
 
-    try {
-      await navigator.clipboard.writeText(subscriptionUrl);
-      setCopied(true);
-      interactions.subscriptionLinkCopied?.({
-        mode: subscriptionFlowMode,
-        flow: isEditingExistingSubscription ? "update" : "create",
-      });
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Copy error:", error);
+    const copied = await copyTextToClipboard(subscriptionUrl);
+    if (!copied) {
+      toast({ title: "复制失败，请手动复制订阅链接", variant: "destructive" });
+      return;
     }
+
+    setCopied(true);
+    interactions.subscriptionLinkCopied?.({
+      mode: subscriptionFlowMode,
+      flow: isEditingExistingSubscription ? "update" : "create",
+    });
+    setTimeout(() => setCopied(false), 2000);
   }, [interactions, isEditingExistingSubscription, subscriptionFlowMode, subscriptionUrl]);
 
   return {
