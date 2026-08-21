@@ -44,6 +44,7 @@ export function RulesManagementSection({
   const {
     enabledProxyGroups,
     customRules,
+    customProxyGroups,
     customRuleSets,
     builtinRuleEdits,
     proxyGroupNameOverrides,
@@ -60,6 +61,7 @@ export function RulesManagementSection({
       buildGeneratedRuleEntries({
         enabledModules: enabledProxyGroups,
         customRules,
+        customProxyGroups,
         customRuleSets,
         builtinRuleEdits,
         proxyGroupNameOverrides,
@@ -69,6 +71,7 @@ export function RulesManagementSection({
       }),
     [
       cnIpNoResolve,
+      customProxyGroups,
       customRuleSets,
       customRules,
       enabledProxyGroups,
@@ -203,6 +206,7 @@ export function RulesManagementSection({
               const canMoveDown = canEditOrder && movableIndex >= 0 && movableIndex < movableKeys.length - 1;
               const absoluteOrder = allRulesMode ? index + 1 : movableIndex + 1;
               const displayDetail = getRuleDisplayDetail(entry);
+              const displayTarget = entry.target.trim() || "目标分流组不可用";
               const shouldShowSourceLabel =
                 entry.sourceLabel.trim() !== entry.target.trim() &&
                 entry.sourceLabel.trim() !== "系统规则";
@@ -222,12 +226,12 @@ export function RulesManagementSection({
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="min-w-0 max-w-full break-words text-xs font-medium leading-5 text-white">{entry.summary}</span>
                           {shouldShowSourceLabel && (
-                            <Badge variant="outline" className="max-w-full border-white/10 bg-white/5 text-white/60">
+                            <Badge variant="outline" className="max-w-full shrink-0 whitespace-nowrap border-white/10 bg-white/5 text-white/60">
                               {entry.sourceLabel}
                             </Badge>
                           )}
-                          <Badge variant="outline" className="max-w-full border-indigo-500/30 bg-indigo-500/10 text-indigo-200">
-                            {entry.target}
+                          <Badge variant="outline" className="max-w-full shrink-0 whitespace-nowrap border-indigo-500/30 bg-indigo-500/10 text-indigo-200">
+                            {displayTarget}
                           </Badge>
                           {entry.noResolve && (
                             <Badge variant="outline" className="shrink-0 border-amber-500/30 bg-amber-500/10 text-amber-200">

@@ -125,6 +125,13 @@ export function VisualGraph() {
     },
     [proxyGroupNameOverrides],
   );
+  const moduleNames = React.useMemo(
+    () =>
+      Object.fromEntries(
+        PROXY_GROUP_MODULES.map((module) => [module.id, resolveModuleName(module)]),
+      ),
+    [resolveModuleName],
+  );
 
   // 节点名称列表
   // 生成当前配置下的代理组（用于显示“默认选中项”）
@@ -169,10 +176,6 @@ export function VisualGraph() {
       if (!g || typeof g.name !== "string" || !g.name.trim()) continue;
       customByName.set(g.name.trim(), g);
     }
-    const moduleNames = Object.fromEntries(
-      PROXY_GROUP_MODULES.map((module) => [module.id, resolveModuleName(module)]),
-    );
-
     const base = generatedProxyGroups.map((g) => {
       const groupName = typeof g.name === "string" ? g.name.trim() : "";
       const mod = groupName ? moduleByName.get(groupName) : undefined;
@@ -343,6 +346,7 @@ export function VisualGraph() {
     builtinRuleEdits,
     proxyGroupAdvanced,
     proxyGroupOrder,
+    moduleNames,
     resolveModuleName,
   ]);
 
@@ -521,6 +525,8 @@ export function VisualGraph() {
       <CustomRulesPreview
         customRules={customRules}
         ruleSets={customRoutingRuleSets}
+        moduleNames={moduleNames}
+        customProxyGroups={activeCustomProxyGroups}
       />
     </div>
   );
