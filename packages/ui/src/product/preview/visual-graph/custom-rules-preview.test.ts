@@ -77,7 +77,8 @@ describe("CustomRulesPreview", () => {
       {
         id: "custom-1",
         name: "🎬 影音分流",
-        rules: [],
+        emoji: "🎬",
+        groupType: "select",
       },
     ];
     const customRules: CustomRule[] = [
