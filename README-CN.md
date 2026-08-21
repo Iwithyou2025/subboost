@@ -64,6 +64,16 @@ npm run check:local-app
 - 更新日志：[https://subboost.org/faq](https://subboost.org/faq)
 - 社区反馈：[LINUX DO](https://linux.do/) & [IDC Flare](https://idcflare.com/)；同时感谢论坛中小伙伴们的积极讨论和反馈
 
+## ⭐轨迹
+
+<a href="https://www.star-history.com/?repos=subboost%2Fsubboost&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=subboost/subboost&type=date&theme=dark&legend=top-left&sealed_token=MM7zhGHc_2l1hUL_stSD9ZvDDNICSP--mPBUfARkLXbAuUrlTJ1YyX-5Oxpnkk2aoFKnliOcl0fUJKhIf8RHFlZpzwhnKB-ZH2Gza3vGQK6KFWhdjcQWvA" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=subboost/subboost&type=date&legend=top-left&sealed_token=MM7zhGHc_2l1hUL_stSD9ZvDDNICSP--mPBUfARkLXbAuUrlTJ1YyX-5Oxpnkk2aoFKnliOcl0fUJKhIf8RHFlZpzwhnKB-ZH2Gza3vGQK6KFWhdjcQWvA" />
+   <img alt="SubBoost Star 成长轨迹" src="https://api.star-history.com/chart?repos=subboost/subboost&type=date&legend=top-left&sealed_token=MM7zhGHc_2l1hUL_stSD9ZvDDNICSP--mPBUfARkLXbAuUrlTJ1YyX-5Oxpnkk2aoFKnliOcl0fUJKhIf8RHFlZpzwhnKB-ZH2Gza3vGQK6KFWhdjcQWvA" />
+ </picture>
+</a>
+
 ## 开源许可
 
 SubBoost 公开源码以 [GNU Affero General Public License v3.0 only](./LICENSE) 授权。
