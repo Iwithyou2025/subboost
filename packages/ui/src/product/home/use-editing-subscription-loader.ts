@@ -454,6 +454,7 @@ export function useEditingSubscriptionLoader({
         const ruleOrderFromCfg = normalizePersistedRuleOrder({
           enabledModules: nextEnabledModules,
           customRules: customRulesFromCfg,
+          customProxyGroups: customProxyGroupsFromCfg,
           customRuleSets: customRuleSetsFromCfg,
           builtinRuleEdits: builtinRuleEditsFromCfg,
           proxyGroupNameOverrides: proxyGroupNameOverridesFromCfg

@@ -484,7 +484,8 @@ export function ProxyGroupsCustomRules() {
                 </div>
               );
             }
-            const ruleTargetName = resolveTargetName(rule.target);
+            const ruleTargetName =
+              resolveTargetName(rule.target) || "目标分流组不可用";
 
             return (
               <div

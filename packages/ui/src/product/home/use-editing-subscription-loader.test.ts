@@ -211,8 +211,11 @@ describe("useEditingSubscriptionLoader", () => {
               template: "full",
               enabledGroups: ["select", "auto", "ai", "youtube"],
               hiddenProxyGroups: ["youtube"],
-              customRules: [{ type: "DOMAIN", value: "example.com", target: "🤖 AI 服务" }],
-              customProxyGroups: [{ id: "custom-1", name: "Custom", emoji: "", groupType: "select" }],
+              customRules: [
+                { id: "disabled-target", type: "DOMAIN", value: "disabled.example.com", target: { kind: "custom", id: "custom-1" } },
+                { id: "active-target", type: "DOMAIN", value: "example.com", target: "DIRECT" },
+              ],
+              customProxyGroups: [{ id: "custom-1", name: "Custom", emoji: "", groupType: "select", enabled: false }],
               customRuleSets: [
                 {
                   id: "custom-ai",
@@ -226,6 +229,7 @@ describe("useEditingSubscriptionLoader", () => {
               moduleRuleEditWarningAccepted: true,
               dialerProxyGroups: [{ id: "dialer-1", name: "Relay", relayNodes: ["Remote"], targetNodes: [] }],
               proxyGroupNameOverrides: { ai: "Labs" },
+              ruleOrder: ["custom-rule:disabled-target", "custom-rule:active-target"],
               proxyGroupOrder: ["module:ai", "module:ai", ""],
               listenerPorts: { Remote: 41000, Deleted: 41001 },
               appliedTemplateId: "template-1",
@@ -272,8 +276,9 @@ describe("useEditingSubscriptionLoader", () => {
       enabledProxyGroups: ["select", "auto", "ai"],
       hiddenProxyGroups: ["youtube"],
       customProxyGroups: [
-        { id: "custom-1", name: "Custom", emoji: "", groupType: "select", advanced: {} },
+        { id: "custom-1", name: "Custom", emoji: "", groupType: "select", enabled: false, advanced: {} },
       ],
+      ruleOrder: ["custom-rule:active-target", "custom-rule-set:custom-ai"],
       proxyGroupAdvancedModeEnabled: true,
       customRuleSets: [
         {

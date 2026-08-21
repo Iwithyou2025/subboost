@@ -541,4 +541,28 @@ describe("ProxyGroupsCustomRules", () => {
       .onClick();
     expect(mocks.store.updateCustomRule).not.toHaveBeenCalled();
   });
+
+  it("shows an explicit fallback badge for unavailable existing targets", () => {
+    mocks.store.customRules = [
+      {
+        id: "missing-target",
+        type: "DOMAIN",
+        value: "missing.example",
+        target: { kind: "custom", id: "missing-1" },
+        noResolve: false,
+      },
+      {
+        id: "blank-target",
+        type: "DOMAIN",
+        value: "blank.example",
+        target: "   ",
+        noResolve: false,
+      },
+    ];
+
+    const { html } = renderRules();
+
+    expect(html.match(/>目标分流组不可用</g)).toHaveLength(2);
+    expect(html).not.toContain('title=""');
+  });
 });
