@@ -24,6 +24,7 @@ import {
   parseRuleSetTargetValue,
   type CustomRoutingRuleSetItem,
 } from "@subboost/core/rules/custom-routing-rule-sets";
+import { DEFAULT_RULE_PROVIDER_BASE_URL } from "@subboost/core/rules/metadata";
 import {
   useConfigStore,
   type RuleSetDraft as StoreRuleSetDraft,
@@ -44,8 +45,12 @@ type RuleSetDraft = {
 
 function formatRuleSetPathForDisplay(path: string): string {
   const normalized = normalizeRuleSetPathInput(path);
-  if (/^(?:geosite|geoip)\/[^/?#\s]+\.mrs$/i.test(normalized)) {
-    return normalized.slice(0, -".mrs".length);
+  const metaCubeXPrefix = `${DEFAULT_RULE_PROVIDER_BASE_URL.replace(/\/+$/, "")}/`;
+  const displayPath = normalized.toLowerCase().startsWith(metaCubeXPrefix.toLowerCase())
+    ? normalized.slice(metaCubeXPrefix.length)
+    : normalized;
+  if (/^(?:geosite|geoip)\/[^/?#\s]+\.mrs$/i.test(displayPath)) {
+    return displayPath.slice(0, -".mrs".length);
   }
   return normalized;
 }

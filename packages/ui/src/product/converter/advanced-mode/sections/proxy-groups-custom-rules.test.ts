@@ -363,6 +363,7 @@ describe("ProxyGroupsCustomRules", () => {
     });
 
     expect(html).toContain("已添加 2");
+    expect(html).not.toContain(">自定义<");
     expect(renderNode(mocks.captures.selectTriggers[2].children)).toContain(
       "域名",
     );
