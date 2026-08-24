@@ -244,6 +244,7 @@ export function createCustomActions(
           customProxyGroups: nextCustomProxyGroups,
           ruleOrder: normalizeRuleOrderForState({
             ...state,
+            customProxyGroups: nextCustomProxyGroups,
             customRules: nextCustomRules,
             customRuleSets: nextCustomRuleSets,
             builtinRuleEdits: nextBuiltinRuleEdits,

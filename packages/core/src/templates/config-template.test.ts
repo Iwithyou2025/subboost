@@ -166,6 +166,41 @@ describe("validateSubBoostTemplateConfig", () => {
     expect(result.config).not.toHaveProperty("allRulesOrderEditingEnabled");
   });
 
+  it("drops ordered rules that target disabled custom proxy groups", () => {
+    const result = validateSubBoostTemplateConfig(
+      validConfig({
+        customProxyGroups: [
+          {
+            id: "disabled-group",
+            name: "Disabled Group",
+            emoji: "",
+            groupType: "select",
+            enabled: false,
+          },
+        ],
+        customRules: [
+          {
+            id: "disabled-target",
+            type: "DOMAIN",
+            value: "disabled.example.com",
+            target: { kind: "custom", id: "disabled-group" },
+          },
+          {
+            id: "active-target",
+            type: "DOMAIN",
+            value: "active.example.com",
+            target: "DIRECT",
+          },
+        ],
+        ruleOrder: ["custom-rule:disabled-target", "custom-rule:active-target"],
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.config.ruleOrder).toEqual(["custom-rule:active-target"]);
+  });
+
   it("uses defaults when optional compatibility fields are omitted", () => {
     const [moduleId] = getModulesForTemplate("minimal");
     const result = validateSubBoostTemplateConfig(

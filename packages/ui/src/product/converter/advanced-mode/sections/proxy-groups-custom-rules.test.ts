@@ -157,6 +157,7 @@ import {
   RULE_HEADER_ROW_CLASS,
   RULE_TARGET_SELECT_TRIGGER_CLASS,
   RULE_TEXT_ACTION_BUTTON_CLASS,
+  RULE_TYPE_BADGE_CLASS,
 } from "./proxy-groups-rule-editor-layout";
 
 function renderRules(
@@ -363,6 +364,8 @@ describe("ProxyGroupsCustomRules", () => {
     });
 
     expect(html).toContain("已添加 2");
+    expect(html).not.toContain(">自定义<");
+    expect(html).toContain(RULE_TYPE_BADGE_CLASS);
     expect(renderNode(mocks.captures.selectTriggers[2].children)).toContain(
       "域名",
     );
@@ -540,5 +543,29 @@ describe("ProxyGroupsCustomRules", () => {
       .find((props) => props.title === "保存规则")
       .onClick();
     expect(mocks.store.updateCustomRule).not.toHaveBeenCalled();
+  });
+
+  it("shows an explicit fallback badge for unavailable existing targets", () => {
+    mocks.store.customRules = [
+      {
+        id: "missing-target",
+        type: "DOMAIN",
+        value: "missing.example",
+        target: { kind: "custom", id: "missing-1" },
+        noResolve: false,
+      },
+      {
+        id: "blank-target",
+        type: "DOMAIN",
+        value: "blank.example",
+        target: "   ",
+        noResolve: false,
+      },
+    ];
+
+    const { html } = renderRules();
+
+    expect(html.match(/>目标分流组不可用</g)).toHaveLength(2);
+    expect(html).not.toContain('title=""');
   });
 });

@@ -107,6 +107,7 @@ export function validateSubBoostTemplateConfig(value: unknown): ValidationResult
   const normalizedRuleOrder = normalizePersistedRuleOrder({
     enabledModules: enabledProxyGroups.value.filter((id) => !hiddenSet.has(id)),
     customRules: customRules.value,
+    customProxyGroups: customProxyGroups.value,
     customRuleSets: ruleModel.customRuleSets,
     builtinRuleEdits: ruleModel.builtinRuleEdits,
     proxyGroupNameOverrides: proxyGroupNameOverrides.value,

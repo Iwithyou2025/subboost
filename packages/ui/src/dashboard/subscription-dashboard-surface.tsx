@@ -33,6 +33,13 @@ import {
 import { DashboardStatsCards } from "@subboost/ui/dashboard/dashboard-stats-cards";
 import { formatDashboardDate, formatIntervalLabel } from "@subboost/ui/dashboard/dashboard-format";
 import { buildRefreshSubscriptionSuccessToast } from "@subboost/ui/dashboard/dashboard-refresh-toast";
+import { copyTextToClipboard } from "@subboost/ui/lib/clipboard";
+import {
+  buildAutoUpdateDisabledNotice,
+  buildNodeQuotaWarning,
+  createResetDashboardAutoUpdateState,
+  isNodeQuotaAutoUpdateDisabled,
+} from "@subboost/ui/dashboard/dashboard-auto-update-warning";
 import { SubscriptionSettingsDialog } from "@subboost/ui/dashboard/subscription-settings-dialog";
 import type { RefreshSubscriptionResponse, Subscription } from "@subboost/ui/dashboard/dashboard-types";
 
@@ -87,31 +94,6 @@ function triggerBrowserDownload(href: string, filename: string) {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {}
-
-  try {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    textarea.style.top = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand("copy");
-    textarea.remove();
-    return ok;
-  } catch {
-    return false;
-  }
 }
 
 export function SubscriptionDashboardSurface({ adapter }: Props) {
@@ -172,23 +154,18 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
       } catch {}
       return true;
     });
-    const firstDisabled = unseen[0];
-    if (!firstDisabled) return;
+    if (unseen.length === 0) return;
 
     const eventKey = unseen.map((sub) => `${sub.id}:${sub.autoUpdateState.disabledAt}`).join("|");
     if (autoUpdateNoticeRef.current === eventKey) return;
     autoUpdateNoticeRef.current = eventKey;
+    const notice = buildAutoUpdateDisabledNotice(unseen);
 
     toast({
-      title: unseen.length === 1 ? "自动更新已关闭" : `${unseen.length} 个订阅的自动更新已关闭`,
+      title: notice.title,
       description: (
         <div className="whitespace-pre-line">
-          {[
-            unseen.length === 1
-              ? `「${firstDisabled.name}」的订阅源连续拉取失败，系统已关闭自动更新。`
-              : "部分订阅源连续拉取失败，系统已关闭对应订阅的自动更新。",
-            "当前可用配置仍会保留；请检查订阅 URL 是否失效、是否限制服务端/代理 IP，必要时重新复制订阅链接后再开启自动更新。",
-          ].join("\n")}
+          {notice.description}
         </div>
       ),
       variant: "warning",
@@ -196,7 +173,7 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
   }, [subscriptions, user]);
 
   const copyToClipboard = async (subscriptionUrl: string, id: string) => {
-    const copied = await copyText(subscriptionUrl);
+    const copied = await copyTextToClipboard(subscriptionUrl);
     if (!copied) {
       toast({ title: "复制失败，请手动复制订阅链接", variant: "destructive" });
       return;
@@ -295,6 +272,7 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
     }
 
     const nextAutoUpdateInterval = autoUpdateEnabled ? autoUpdateIntervalHoursToSeconds(hoursValue) : null;
+    const shouldResetAutoUpdateState = settingsSub.autoUpdateInterval === null && nextAutoUpdateInterval !== null;
     setSavingSettings(true);
     try {
       await adapter.updateSubscriptionSettings(settingsSub.id, {
@@ -311,17 +289,9 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
                 name,
                 smartNodeMatchingEnabled,
                 autoUpdateInterval: nextAutoUpdateInterval,
-                ...(autoUpdateEnabled
+                ...(shouldResetAutoUpdateState
                   ? {
-                      autoUpdateState: {
-                        externalFailureCount: 0,
-                        failureSourceState: null,
-                        lastFailedAt: null,
-                        lastAttemptedAt: null,
-                        disabledAt: null,
-                        disabledReason: null,
-                        disabledPreviousInterval: null,
-                      },
+                      autoUpdateState: createResetDashboardAutoUpdateState(),
                     }
                   : {}),
               }
@@ -507,6 +477,8 @@ function SubscriptionRow({
   onRefresh: (id: string) => Promise<void>;
   onSettings: (sub: Subscription) => void;
 }) {
+  const quotaWarning = buildNodeQuotaWarning(sub.autoUpdateState);
+  const quotaDisabled = isNodeQuotaAutoUpdateDisabled(sub.autoUpdateState);
   return (
     <div className="flex flex-col gap-3 p-4 rounded-lg bg-white/5 border border-white/10 hover:border-white/20 transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="flex min-w-0 flex-1 items-start gap-4 sm:items-center">
@@ -532,7 +504,13 @@ function SubscriptionRow({
                 每 {formatIntervalLabel(sub.autoUpdateInterval)} 刷新缓存
               </span>
             )}
-            {!sub.autoUpdateInterval && sub.autoUpdateState.disabledAt && sub.autoUpdateState.disabledReason && (
+            {quotaWarning && (
+              <span className="flex items-center gap-1 text-amber-300">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {quotaWarning}{quotaDisabled ? "，自动更新已关闭" : ""}
+              </span>
+            )}
+            {!quotaDisabled && !sub.autoUpdateInterval && sub.autoUpdateState.disabledAt && sub.autoUpdateState.disabledReason && (
               <span className="flex items-center gap-1 text-amber-300">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 自动更新已关闭：{sub.autoUpdateState.disabledReason}

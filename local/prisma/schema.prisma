@@ -65,6 +65,10 @@ model SubscriptionAutoUpdateState {
   failureSourceState       String?   @db.Text
   lastFailedAt             DateTime?
   lastAttemptedAt          DateTime?
+  nodeQuotaFailureCount    Int       @default(0)
+  lastNodeQuotaExceededAt  DateTime?
+  lastNodeQuotaActual      Int?
+  lastNodeQuotaLimit       Int?
   disabledAt               DateTime?
   disabledReason           String?
   disabledPreviousInterval Int?

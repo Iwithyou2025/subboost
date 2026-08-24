@@ -160,6 +160,69 @@ describe("RulesManagementSection", () => {
     );
   });
 
+  it("passes custom proxy groups to the rule builder and renders their full names", () => {
+    const customProxyGroups = [
+      {
+        id: "custom-media",
+        name: "🎬 影音分流",
+        emoji: "🎬",
+        groupType: "select",
+      },
+    ];
+    mocks.buildGeneratedRuleEntries.mockImplementationOnce(
+      (options: { customProxyGroups?: typeof customProxyGroups }) => [
+        {
+          key: "custom-rule-set:media",
+          editable: true,
+          summary: "Elsevier",
+          sourceLabel: "自定义规则集",
+          target: options.customProxyGroups?.[0]?.name ?? "",
+          noResolve: false,
+          text: "RULE-SET,elsevier,🎬 影音分流",
+        },
+      ],
+    );
+
+    const tree = renderSection({ customProxyGroups });
+    const targetBadge = collectElements(
+      tree,
+      (element) =>
+        typeof element.props.className === "string" &&
+        element.props.className.includes("border-indigo-500/30"),
+    )[0];
+
+    expect(mocks.buildGeneratedRuleEntries).toHaveBeenCalledWith(
+      expect.objectContaining({ customProxyGroups }),
+    );
+    expect(collectText(targetBadge)).toBe("🎬 影音分流");
+    expect(targetBadge.props.className).toContain("whitespace-nowrap");
+  });
+
+  it("renders a readable fallback instead of an empty target badge", () => {
+    mocks.entries = [
+      {
+        key: "custom-rule-set:legacy",
+        editable: true,
+        summary: "Legacy",
+        sourceLabel: "自定义规则集",
+        target: "   ",
+        noResolve: false,
+        text: "RULE-SET,legacy,",
+      },
+    ];
+
+    const tree = renderSection();
+    const targetBadges = collectElements(
+      tree,
+      (element) =>
+        typeof element.props.className === "string" &&
+        element.props.className.includes("border-indigo-500/30"),
+    );
+
+    expect(targetBadges).toHaveLength(1);
+    expect(collectText(targetBadges[0])).toBe("目标分流组不可用");
+  });
+
   it("keeps visible rule tags out of details and keeps order controls row-based", () => {
     mocks.entries = [
       {

@@ -24,6 +24,7 @@ import {
   parseRuleSetTargetValue,
   type CustomRoutingRuleSetItem,
 } from "@subboost/core/rules/custom-routing-rule-sets";
+import { DEFAULT_RULE_PROVIDER_BASE_URL } from "@subboost/core/rules/metadata";
 import {
   useConfigStore,
   type RuleSetDraft as StoreRuleSetDraft,
@@ -34,6 +35,7 @@ import {
   RULE_EDIT_ROW_CLASS,
   RULE_EDIT_TARGET_SELECT_TRIGGER_CLASS,
   RULE_EDIT_TRAILING_CONTROLS_CLASS,
+  RULE_TYPE_BADGE_CLASS,
 } from "./proxy-groups-rule-editor-layout";
 
 type RuleSetDraft = {
@@ -44,8 +46,12 @@ type RuleSetDraft = {
 
 function formatRuleSetPathForDisplay(path: string): string {
   const normalized = normalizeRuleSetPathInput(path);
-  if (/^(?:geosite|geoip)\/[^/?#\s]+\.mrs$/i.test(normalized)) {
-    return normalized.slice(0, -".mrs".length);
+  const metaCubeXPrefix = `${DEFAULT_RULE_PROVIDER_BASE_URL.replace(/\/+$/, "")}/`;
+  const displayPath = normalized.toLowerCase().startsWith(metaCubeXPrefix.toLowerCase())
+    ? normalized.slice(metaCubeXPrefix.length)
+    : normalized;
+  if (/^(?:geosite|geoip)\/[^/?#\s]+\.mrs$/i.test(displayPath)) {
+    return displayPath.slice(0, -".mrs".length);
   }
   return normalized;
 }
@@ -383,7 +389,7 @@ export function ProxyGroupsAddedRuleSets({
               key={item.key}
               className="flex min-w-0 flex-wrap items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px]"
             >
-              <span className="rounded border border-indigo-400/20 bg-indigo-500/10 px-1.5 py-0.5 font-medium text-indigo-200">
+              <span className={RULE_TYPE_BADGE_CLASS}>
                 RULE-SET
               </span>
               <span

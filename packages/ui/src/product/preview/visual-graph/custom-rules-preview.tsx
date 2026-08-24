@@ -2,28 +2,40 @@
 
 import * as React from "react";
 import { ArrowRight, Shield } from "lucide-react";
+import { resolveProxyGroupTargetName } from "@subboost/core/proxy-group-targets";
 import type { CustomRoutingRuleSetItem } from "@subboost/core/rules/custom-routing-rule-sets";
-import type { CustomRule } from "@subboost/core/types/config";
+import type { CustomProxyGroup, CustomRule } from "@subboost/core/types/config";
 
-function ruleTargetToText(target: CustomRule["target"]): string {
-  if (typeof target === "string") return target;
-  return `${target.kind}:${target.id}`;
-}
+const UNAVAILABLE_TARGET_LABEL = "目标分流组不可用";
 
 export function CustomRulesPreview({
   customRules,
   ruleSets = [],
+  moduleNames,
+  customProxyGroups,
 }: {
   customRules: CustomRule[];
   ruleSets?: CustomRoutingRuleSetItem[];
+  moduleNames: Record<string, string>;
+  customProxyGroups: CustomProxyGroup[];
 }) {
+  const resolveTargetName = React.useCallback(
+    (target: CustomRule["target"]) =>
+      resolveProxyGroupTargetName(target, {
+        moduleNames,
+        customProxyGroups,
+        fallbackTarget: UNAVAILABLE_TARGET_LABEL,
+      }),
+    [customProxyGroups, moduleNames],
+  );
+
   const items = React.useMemo(
     () => [
       ...customRules.map((rule) => ({
         key: rule.id || `${rule.type}:${rule.value}`,
         type: rule.type,
         value: rule.value,
-        target: ruleTargetToText(rule.target),
+        target: resolveTargetName(rule.target),
         noResolve: Boolean(rule.noResolve),
         title: rule.value,
       })),
@@ -31,12 +43,12 @@ export function CustomRulesPreview({
         key: rule.key,
         type: "RULE-SET",
         value: rule.name,
-        target: rule.target.name,
+        target: resolveTargetName(rule.target),
         noResolve: Boolean(rule.noResolve),
         title: `${rule.name} · ${rule.path}`,
       })),
     ],
-    [customRules, ruleSets],
+    [customRules, resolveTargetName, ruleSets],
   );
 
   if (items.length === 0) return null;

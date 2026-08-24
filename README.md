@@ -64,6 +64,16 @@ npm run check:local-app
 - Changelog: [https://subboost.org/faq](https://subboost.org/faq)
 - Community feedback: [LINUX DO](https://linux.do/) & [IDC Flare](https://idcflare.com/); thanks to everyone in the forums for the active discussion and feedback.
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=subboost%2Fsubboost&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=subboost/subboost&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=subboost/subboost&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=subboost/subboost&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ## License
 
 The public SubBoost source code is licensed under the [GNU Affero General Public License v3.0 only](./LICENSE).
