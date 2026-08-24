@@ -154,8 +154,7 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
       } catch {}
       return true;
     });
-    const firstDisabled = unseen[0];
-    if (!firstDisabled) return;
+    if (unseen.length === 0) return;
 
     const eventKey = unseen.map((sub) => `${sub.id}:${sub.autoUpdateState.disabledAt}`).join("|");
     if (autoUpdateNoticeRef.current === eventKey) return;
