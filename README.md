@@ -68,9 +68,9 @@ npm run check:local-app
 
 <a href="https://www.star-history.com/?repos=subboost%2Fsubboost&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=subboost/subboost&type=date&theme=dark&legend=top-left&sealed_token=MM7zhGHc_2l1hUL_stSD9ZvDDNICSP--mPBUfARkLXbAuUrlTJ1YyX-5Oxpnkk2aoFKnliOcl0fUJKhIf8RHFlZpzwhnKB-ZH2Gza3vGQK6KFWhdjcQWvA" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=subboost/subboost&type=date&legend=top-left&sealed_token=MM7zhGHc_2l1hUL_stSD9ZvDDNICSP--mPBUfARkLXbAuUrlTJ1YyX-5Oxpnkk2aoFKnliOcl0fUJKhIf8RHFlZpzwhnKB-ZH2Gza3vGQK6KFWhdjcQWvA" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=subboost/subboost&type=date&legend=top-left&sealed_token=MM7zhGHc_2l1hUL_stSD9ZvDDNICSP--mPBUfARkLXbAuUrlTJ1YyX-5Oxpnkk2aoFKnliOcl0fUJKhIf8RHFlZpzwhnKB-ZH2Gza3vGQK6KFWhdjcQWvA" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=subboost/subboost&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=subboost/subboost&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=subboost/subboost&type=date&legend=top-left" />
  </picture>
 </a>
 
