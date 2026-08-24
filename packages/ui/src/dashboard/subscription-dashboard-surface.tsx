@@ -272,6 +272,7 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
     }
 
     const nextAutoUpdateInterval = autoUpdateEnabled ? autoUpdateIntervalHoursToSeconds(hoursValue) : null;
+    const shouldResetAutoUpdateState = settingsSub.autoUpdateInterval === null && nextAutoUpdateInterval !== null;
     setSavingSettings(true);
     try {
       await adapter.updateSubscriptionSettings(settingsSub.id, {
@@ -288,7 +289,7 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
                 name,
                 smartNodeMatchingEnabled,
                 autoUpdateInterval: nextAutoUpdateInterval,
-                ...(autoUpdateEnabled
+                ...(shouldResetAutoUpdateState
                   ? {
                       autoUpdateState: createResetDashboardAutoUpdateState(),
                     }

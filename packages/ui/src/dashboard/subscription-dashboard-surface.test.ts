@@ -562,6 +562,36 @@ describe("SubscriptionDashboardSurface", () => {
     expect(stateMock.setters[0]).toHaveBeenCalledWith(expect.any(Function));
     expect(stateMock.setters[4]).toHaveBeenCalledWith(false);
 
+    renderSurface(adapter, {
+      0: [quotaWarningSubscription],
+      1: false,
+      4: true,
+      5: quotaWarningSubscription,
+      6: "Quota warning",
+      7: true,
+      8: true,
+      9: 24,
+      10: false,
+    });
+    await mocks.captures.settingsDialog.onSave();
+    expect((stateMock.setters[0] as any).lastValue[0].autoUpdateState).toEqual(
+      quotaWarningSubscription.autoUpdateState
+    );
+
+    renderSurface(adapter, {
+      0: [disabledSubscription],
+      1: false,
+      4: true,
+      5: disabledSubscription,
+      6: "Re-enabled",
+      7: true,
+      8: true,
+      9: 24,
+      10: false,
+    });
+    await mocks.captures.settingsDialog.onSave();
+    expect((stateMock.setters[0] as any).lastValue[0].autoUpdateState).toEqual(subscription.autoUpdateState);
+
     renderSurface(adapter, { 0: [subscription], 1: false, 4: true, 5: subscription, 6: "Manual", 7: true, 8: false, 9: 24, 10: false });
     await mocks.captures.settingsDialog.onSave();
     expect(adapter.updateSubscriptionSettings).toHaveBeenCalledWith("sub-1", {
