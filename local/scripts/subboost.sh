@@ -82,7 +82,7 @@ compose_files() {
 compose_files_with_image() {
   local image="$1"
   shift
-  SUBBOOST_IMAGE="$image" compose_files "$@"
+  SUBBOOST_IMAGE="$image" SUBBOOST_CANDIDATE_IMAGE="$image" compose_files "$@"
 }
 
 load_env() {
@@ -429,6 +429,7 @@ update_cmd() {
     old_manager_present=1
   fi
   set_file_env_value "$candidate_env" SUBBOOST_IMAGE "$image"
+  set_file_env_value "$candidate_env" SUBBOOST_CANDIDATE_IMAGE "$image"
   set_file_env_value "$candidate_env" SUBBOOST_RELEASE_URL "$release_url"
   [ -n "$compose_url" ] && set_file_env_value "$candidate_env" SUBBOOST_COMPOSE_URL "$compose_url"
   [ -n "$manager_url" ] && set_file_env_value "$candidate_env" SUBBOOST_MANAGER_URL "$manager_url"
