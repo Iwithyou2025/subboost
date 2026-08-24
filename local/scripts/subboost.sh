@@ -79,6 +79,12 @@ compose_files() {
   (cd "$SUBBOOST_HOME" && docker_cmd compose --project-directory "$SUBBOOST_HOME" --env-file "$env_file" -f "$compose_file" "$@")
 }
 
+compose_files_with_image() {
+  local image="$1"
+  shift
+  SUBBOOST_IMAGE="$image" SUBBOOST_CANDIDATE_IMAGE="$image" compose_files "$@"
+}
+
 load_env() {
   [ -f "$ENV_FILE" ] || die "Missing $ENV_FILE"
   set -a
@@ -423,19 +429,20 @@ update_cmd() {
     old_manager_present=1
   fi
   set_file_env_value "$candidate_env" SUBBOOST_IMAGE "$image"
+  set_file_env_value "$candidate_env" SUBBOOST_CANDIDATE_IMAGE "$image"
   set_file_env_value "$candidate_env" SUBBOOST_RELEASE_URL "$release_url"
   [ -n "$compose_url" ] && set_file_env_value "$candidate_env" SUBBOOST_COMPOSE_URL "$compose_url"
   [ -n "$manager_url" ] && set_file_env_value "$candidate_env" SUBBOOST_MANAGER_URL "$manager_url"
   if ! grep -q '^LOCAL_SETUP_TOKEN=.' "$candidate_env"; then
     set_file_env_value "$candidate_env" LOCAL_SETUP_TOKEN "$(random_hex 32)"
   fi
-  compose_files "$candidate_env" "$candidate_compose" config >/dev/null
-  services="$(compose_files "$candidate_env" "$candidate_compose" config --services)"
+  compose_files_with_image "$image" "$candidate_env" "$candidate_compose" config >/dev/null
+  services="$(compose_files_with_image "$image" "$candidate_env" "$candidate_compose" config --services)"
   for service in app db cron; do
     printf '%s\n' "$services" | grep -Fxq "$service" || die "Candidate Compose is missing service: $service"
   done
   say "Pulling candidate image before the maintenance window..."
-  SUBBOOST_IMAGE="$image" compose_files "$candidate_env" "$candidate_compose" pull
+  compose_files_with_image "$image" "$candidate_env" "$candidate_compose" pull
 
   app_id="$(service_container_id app)"
   [ -n "$app_id" ] || die "Cannot identify the current app container for rollback."
@@ -469,9 +476,9 @@ update_cmd() {
   fi
 
   update_error=""
-  compose_files "$candidate_env" "$candidate_compose" up -d db || update_error="candidate database startup failed"
+  compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d db || update_error="candidate database startup failed"
   if [ -z "$update_error" ]; then
-    compose_files "$candidate_env" "$candidate_compose" up -d --no-deps app || update_error="candidate app startup or migration failed"
+    compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d --no-deps app || update_error="candidate app startup or migration failed"
   fi
   if [ -z "$update_error" ] && ! wait_for_health; then
     update_error="candidate health check failed"
@@ -486,12 +493,12 @@ update_cmd() {
     activate_staged_file "${SUBBOOST_BIN:-/usr/local/bin/subboost}" || update_error="candidate manager activation failed"
   fi
   if [ -z "$update_error" ]; then
-    compose_files "$candidate_env" "$candidate_compose" up -d --no-deps cron || update_error="candidate cron startup failed"
+    compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d --no-deps cron || update_error="candidate cron startup failed"
   fi
 
   if [ -n "$update_error" ]; then
     say "Candidate update failed: $update_error"
-    compose_files "$candidate_env" "$candidate_compose" stop cron app >/dev/null 2>&1 || true
+    compose_files_with_image "$image" "$candidate_env" "$candidate_compose" stop cron app >/dev/null 2>&1 || true
     docker_cmd tag "$rollback_tag" "$old_image_ref" || true
     sudo_do rm -f "${ENV_FILE}.candidate.$$" "${COMPOSE_FILE}.candidate.$$" "${SUBBOOST_BIN:-/usr/local/bin/subboost}.candidate.$$"
     restore_error=""

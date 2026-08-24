@@ -49,7 +49,11 @@ function withTempVersionRepo(run: (root: string) => void): void {
   const root = mkdtempSync(join(tmpdir(), "subboost-public-release-assets-"));
   try {
     writeText(root, "public/package.json", JSON.stringify({ version: "9.8.7" }));
-    writeText(root, "public/local/docker-compose.image.yml", "services: {}\n");
+    writeText(
+      root,
+      "public/local/docker-compose.image.yml",
+      "services:\n  app:\n    image: ${SUBBOOST_IMAGE:?set SUBBOOST_IMAGE}\n",
+    );
     writeText(
       root,
       "public/local/scripts/install.sh",
@@ -129,9 +133,19 @@ describe("public selfhost release assets script", () => {
         'DEFAULT_COMPOSE_URL="https://github.com/SubBoost/subboost/releases/latest/download/docker-compose.image.yml"'
       );
       expect(readFileSync(join(bundle.output, "subboost-manager"), "utf8")).not.toContain("\r");
+      const releaseCompose = readFileSync(join(bundle.output, "docker-compose.image.yml"), "utf8");
+      expect(releaseCompose).toContain(
+        "image: ${SUBBOOST_CANDIDATE_IMAGE:-ghcr.io/subboost/subboost@sha256:abc123}",
+      );
+      expect(releaseCompose).not.toContain("${SUBBOOST_IMAGE:?set SUBBOOST_IMAGE}");
       expectExecutable(join(bundle.output, "install.sh"));
       expectExecutable(join(bundle.output, "subboost-manager"));
       expect(JSON.parse(readFileSync(join(bundle.output, "release.json"), "utf8"))).toMatchObject(manifest);
+
+      writeText(publicRoot, "local/docker-compose.image.yml", "services: {}\n");
+      expect(() => publicReleaseAssets.createBundle(publicRoot, args)).toThrow(
+        "Expected exactly one SubBoost image marker in docker-compose.image.yml, found 0.",
+      );
     });
   }, 10_000);
 
@@ -289,7 +303,11 @@ describe("public selfhost release assets script", () => {
     try {
       writeText(root, "package.json", JSON.stringify({ version: "1.2.3" }));
       writeText(root, "local/Dockerfile", "FROM node:24-alpine\n");
-      writeText(root, "local/docker-compose.image.yml", "services: {}\n");
+      writeText(
+        root,
+        "local/docker-compose.image.yml",
+        "services:\n  app:\n    image: ${SUBBOOST_IMAGE:?set SUBBOOST_IMAGE}\n",
+      );
       writeText(root, "local/scripts/install.sh", "#!/usr/bin/env bash\necho install\n");
       writeText(root, "local/scripts/subboost.sh", "#!/usr/bin/env bash\necho subboost\n");
 
