@@ -35,6 +35,7 @@ import {
   RULE_EDIT_ROW_CLASS,
   RULE_EDIT_TARGET_SELECT_TRIGGER_CLASS,
   RULE_EDIT_TRAILING_CONTROLS_CLASS,
+  RULE_TYPE_BADGE_CLASS,
 } from "./proxy-groups-rule-editor-layout";
 
 type RuleSetDraft = {
@@ -388,7 +389,7 @@ export function ProxyGroupsAddedRuleSets({
               key={item.key}
               className="flex min-w-0 flex-wrap items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px]"
             >
-              <span className="rounded border border-indigo-400/20 bg-indigo-500/10 px-1.5 py-0.5 font-medium text-indigo-200">
+              <span className={RULE_TYPE_BADGE_CLASS}>
                 RULE-SET
               </span>
               <span

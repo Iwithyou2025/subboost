@@ -157,6 +157,7 @@ import {
   RULE_HEADER_ROW_CLASS,
   RULE_TARGET_SELECT_TRIGGER_CLASS,
   RULE_TEXT_ACTION_BUTTON_CLASS,
+  RULE_TYPE_BADGE_CLASS,
 } from "./proxy-groups-rule-editor-layout";
 
 function renderRules(
@@ -364,6 +365,7 @@ describe("ProxyGroupsCustomRules", () => {
 
     expect(html).toContain("已添加 2");
     expect(html).not.toContain(">自定义<");
+    expect(html).toContain(RULE_TYPE_BADGE_CLASS);
     expect(renderNode(mocks.captures.selectTriggers[2].children)).toContain(
       "域名",
     );

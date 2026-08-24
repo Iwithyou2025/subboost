@@ -179,6 +179,7 @@ import {
   RULE_EDIT_TARGET_SELECT_TRIGGER_CLASS,
   RULE_EDIT_TRAILING_CONTROLS_CLASS,
   RULE_TARGET_SELECT_TRIGGER_CLASS,
+  RULE_TYPE_BADGE_CLASS,
 } from "./proxy-groups-rule-editor-layout";
 
 const moduleItem = {
@@ -286,6 +287,7 @@ describe("ProxyGroupsAddedRuleSets", () => {
     const { html } = renderAdded();
 
     expect(html).toContain("RULE-SET");
+    expect(html).toContain(RULE_TYPE_BADGE_CLASS);
     expect(html).toContain("geosite/rule-a");
     expect(html).toContain("geoip/rule-b");
     expect(html).toContain("Auto");

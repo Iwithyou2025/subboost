@@ -37,6 +37,7 @@ import {
   RULE_HEADER_ACTION_BUTTON_CLASS,
   RULE_HEADER_ROW_CLASS,
   RULE_TEXT_ACTION_BUTTON_CLASS,
+  RULE_TYPE_BADGE_CLASS,
 } from "./proxy-groups-rule-editor-layout";
 
 const CUSTOM_RULE_TYPE_LABELS: Record<CustomRule["type"], string> = {
@@ -492,7 +493,7 @@ export function ProxyGroupsCustomRules() {
                 key={rule.id}
                 className="flex min-w-0 flex-wrap items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px]"
               >
-                <span className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-medium text-white/55">
+                <span className={RULE_TYPE_BADGE_CLASS}>
                   {rule.type}
                 </span>
                 <span
