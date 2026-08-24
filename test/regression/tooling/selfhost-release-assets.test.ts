@@ -141,6 +141,11 @@ describe("public selfhost release assets script", () => {
       expectExecutable(join(bundle.output, "install.sh"));
       expectExecutable(join(bundle.output, "subboost-manager"));
       expect(JSON.parse(readFileSync(join(bundle.output, "release.json"), "utf8"))).toMatchObject(manifest);
+
+      writeText(publicRoot, "local/docker-compose.image.yml", "services: {}\n");
+      expect(() => publicReleaseAssets.createBundle(publicRoot, args)).toThrow(
+        "Expected exactly one SubBoost image marker in docker-compose.image.yml, found 0.",
+      );
     });
   }, 10_000);
 
