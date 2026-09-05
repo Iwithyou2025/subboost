@@ -1,6 +1,6 @@
 "use client";
 
-import type * as React from "react";
+import * as React from "react";
 import { Check, Copy, Link as LinkIcon, Loader2 } from "lucide-react";
 import { Button } from "@subboost/ui/components/ui/button";
 import { FormField } from "@subboost/ui/components/ui/form-field";
@@ -38,9 +38,14 @@ type Props = {
   isCreatingSubscription: boolean;
   copied: boolean;
   isEditingExistingSubscription: boolean;
-  handleCopyUrl: () => void;
+  handleCopyUrl: (url?: string) => void;
   handleCreateSubscription: () => void;
 };
+
+export function buildYamlRuleSubscriptionUrl(subscriptionUrl: string): string {
+  if (!subscriptionUrl) return "";
+  return subscriptionUrl.replace(/\/config\.yaml(?=([?#]|$))/, "/config-yaml.yaml");
+}
 
 export function SubscriptionLinkDialog({
   open,
@@ -63,6 +68,13 @@ export function SubscriptionLinkDialog({
 }: Props) {
   const close = () => onOpenChange(false);
   const minAutoUpdateLabel = getAutoUpdateIntervalPolicyMinLabel(autoUpdatePolicy);
+  const [useYamlRuleProviders, setUseYamlRuleProviders] = React.useState(false);
+
+  const yamlSubscriptionUrl = React.useMemo(
+    () => buildYamlRuleSubscriptionUrl(subscriptionUrl),
+    [subscriptionUrl]
+  );
+  const displayedSubscriptionUrl = useYamlRuleProviders ? yamlSubscriptionUrl : subscriptionUrl;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -154,14 +166,33 @@ export function SubscriptionLinkDialog({
           </div>
         ) : (
           <div className="space-y-4 py-4">
+            <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-medium">YAML 规则集</p>
+                  <p className="text-xs text-white/50">关闭：使用 MRS　开启：使用 YAML</p>
+                </div>
+                <Switch
+                  checked={useYamlRuleProviders}
+                  onCheckedChange={setUseYamlRuleProviders}
+                  aria-label="使用 YAML 规则集"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <p className="text-sm font-medium">订阅链接</p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">订阅链接</p>
+                <span className="text-xs text-white/50">
+                  {useYamlRuleProviders ? "YAML" : "MRS"}
+                </span>
+              </div>
               <div className="flex gap-2">
-                <Input value={subscriptionUrl} readOnly className="font-mono text-xs" />
+                <Input value={displayedSubscriptionUrl} readOnly className="font-mono text-xs" />
                 <IconButton
                   label={copied ? "已复制订阅链接" : "复制订阅链接"}
                   variant="outline"
-                  onClick={handleCopyUrl}
+                  onClick={() => handleCopyUrl(displayedSubscriptionUrl)}
                   className="flex-shrink-0"
                 >
                   {copied ? (

@@ -56,7 +56,7 @@ type SubscriptionLinkState = {
   handleGenerateSubscription: (mode: ProductMode) => void;
   handleAcceptSaveRequirement: () => void;
   handleCreateSubscription: () => void;
-  handleCopyUrl: () => void;
+  handleCopyUrl: (url?: string) => void;
 };
 
 type Props = {

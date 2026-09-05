@@ -1,5 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { generateClashYaml } from "@subboost/core/generator";
+import {
+  generateClashYaml,
+  generateClashYamlWithYamlRuleProviders,
+} from "@subboost/core/generator";
 import { buildGenerateOptionsFromConfig, getEffectiveTestOptions } from "@subboost/core/subscription/config-utils";
 import { buildProxyProvidersFromConfig } from "@subboost/core/subscription/proxy-providers";
 import type { SubscriptionResponseInfo } from "@subboost/core/subscription/subscription-response-info";
@@ -28,6 +31,8 @@ import { normalizeLocalAutoUpdateIntervalSeconds } from "./auto-update-policy";
 
 export const MAX_NODES_PER_SUBSCRIPTION = 10000;
 export const CACHE_TTL_SECONDS = 3600;
+
+export type RuleProviderFormat = "mrs" | "yaml";
 
 export type SubscriptionRow = {
   id: string;
@@ -430,19 +435,25 @@ export async function refreshSubscription(ownerId: string, id: string) {
   };
 }
 
-export async function generateSubscriptionYaml(token: string): Promise<GeneratedSubscriptionYaml | null> {
+export async function generateSubscriptionYaml(
+  token: string,
+  ruleProviderFormat: RuleProviderFormat = "mrs"
+): Promise<GeneratedSubscriptionYaml | null> {
   const row = await prisma.subscription.findUnique({ where: { token }, include: { autoUpdateState: true } });
   if (!row) return null;
   const secrets = readSubscriptionSecrets(row);
   const { testUrl, testInterval } = getEffectiveTestOptions(secrets.config);
   const proxyProviders = buildProxyProvidersFromConfig(secrets.config, { testUrl, testInterval });
   if (secrets.nodes.length === 0 && !proxyProviders) return null;
-  const yaml = generateClashYaml(
-    buildGenerateOptionsFromConfig(secrets.config, {
-      nodes: secrets.nodes,
-      proxyProviders,
-    })
-  );
+  const generateOptions = buildGenerateOptionsFromConfig(secrets.config, {
+    nodes: secrets.nodes,
+    proxyProviders,
+  });
+
+  const yaml =
+    ruleProviderFormat === "yaml"
+      ? generateClashYamlWithYamlRuleProviders(generateOptions)
+      : generateClashYaml(generateOptions);
   await prisma.subscription.update({ where: { id: row.id }, data: { lastAccessedAt: new Date() } });
   return {
     yaml,

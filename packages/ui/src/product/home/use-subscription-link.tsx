@@ -496,11 +496,12 @@ export function useSubscriptionLink({
     trackSubscriptionMutation,
   ]);
 
-  // 复制订阅链接
-  const handleCopyUrl = React.useCallback(async () => {
-    if (!subscriptionUrl) return;
+  // 复制订阅链接。未传入 url 时保持原行为，复制默认 MRS 链接。
+  const handleCopyUrl = React.useCallback(async (url?: string) => {
+    const targetUrl = typeof url === "string" ? url : subscriptionUrl;
+    if (!targetUrl) return;
 
-    const copied = await copyTextToClipboard(subscriptionUrl);
+    const copied = await copyTextToClipboard(targetUrl);
     if (!copied) {
       toast({ title: "复制失败，请手动复制订阅链接", variant: "destructive" });
       return;

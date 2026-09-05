@@ -63,7 +63,7 @@ vi.mock("@subboost/ui/components/ui/dialog", () => ({
   DialogTitle: (props: any) => React.createElement("h2", props, props.children),
 }));
 
-import { SubscriptionLinkDialog } from "./subscription-link-dialog";
+import { buildYamlRuleSubscriptionUrl, SubscriptionLinkDialog } from "./subscription-link-dialog";
 
 const baseUser: User = {
   id: "user-1",
@@ -163,7 +163,7 @@ describe("SubscriptionLinkDialog", () => {
     const html = renderToStaticMarkup(
       React.createElement(SubscriptionLinkDialog, {
         ...baseProps,
-        subscriptionUrl: "https://sub.example.com/sub/token",
+        subscriptionUrl: "https://sub.example.com/api/subscriptions/token/config.yaml",
         copied: true,
         isEditingExistingSubscription: true,
       })
@@ -171,18 +171,40 @@ describe("SubscriptionLinkDialog", () => {
 
     expect(html).toContain("订阅链接已更新");
     expect(html).toContain("复制下方链接到 Clash 客户端导入使用");
+    expect(html).toContain("YAML 规则集");
+    expect(html).toContain("关闭：使用 MRS");
     expect(html).toContain("更新成功");
     expect(html).toContain("check-icon");
     expect(captures.inputs[0]).toMatchObject({
-      value: "https://sub.example.com/sub/token",
+      value: "https://sub.example.com/api/subscriptions/token/config.yaml",
       readOnly: true,
     });
+    expect(captures.switches).toHaveLength(1);
+    expect(captures.switches[0]).toMatchObject({ checked: false });
 
     captures.buttons[0].onClick();
     captures.buttons[1].onClick();
 
-    expect(baseProps.handleCopyUrl).toHaveBeenCalled();
+    expect(baseProps.handleCopyUrl).toHaveBeenCalledWith(
+      "https://sub.example.com/api/subscriptions/token/config.yaml"
+    );
     expect(baseProps.onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("derives the fixed YAML rule-provider subscription URL", () => {
+    expect(
+      buildYamlRuleSubscriptionUrl(
+        "https://sub.example.com/api/subscriptions/token/config.yaml"
+      )
+    ).toBe("https://sub.example.com/api/subscriptions/token/config-yaml.yaml");
+
+    expect(
+      buildYamlRuleSubscriptionUrl(
+        "https://sub.example.com/api/subscriptions/token/config.yaml?client=test"
+      )
+    ).toBe(
+      "https://sub.example.com/api/subscriptions/token/config-yaml.yaml?client=test"
+    );
   });
 
   it("disables link creation while name is empty or a request is running", () => {

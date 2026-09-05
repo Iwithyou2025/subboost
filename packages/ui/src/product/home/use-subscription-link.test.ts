@@ -587,6 +587,24 @@ describe("useSubscriptionLink", () => {
     );
   });
 
+  it("copies an explicitly selected YAML rule-provider URL while preserving copy tracking", async () => {
+    let hook = useRenderedHook();
+    hook.setSubscriptionUrl("https://subboost.test/api/subscriptions/token-1/config.yaml");
+    hook = useRenderedHook();
+
+    await hook.handleCopyUrl(
+      "https://subboost.test/api/subscriptions/token-1/config-yaml.yaml"
+    );
+
+    expect(globalThis.navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "https://subboost.test/api/subscriptions/token-1/config-yaml.yaml"
+    );
+    expect(mocks.bag.interactions.subscriptionLinkCopied).toHaveBeenCalledWith({
+      flow: "create",
+      mode: "quick",
+    });
+  });
+
   it("falls back to legacy copy for subscription links on non-secure origins", async () => {
     const textarea = {
       value: "",

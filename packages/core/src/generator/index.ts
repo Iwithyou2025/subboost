@@ -2,7 +2,9 @@
  * Clash 配置生成器 - 浏览器端运行
  */
 
+
 import yaml from "js-yaml";
+import { convertMetaCubeXRuleProvidersToYaml } from "./rule-provider-yaml";
 import {
   buildDefaultBaseConfigPatch,
   buildDefaultUserConfig,
@@ -600,6 +602,16 @@ export function generateClashConfig(options: GenerateOptions): ClashConfig {
 export function generateClashYaml(options: GenerateOptions): string {
   const config = generateClashConfig(options);
   return configToYaml(config);
+}
+
+
+/**
+ * 生成使用 YAML rule-provider 的 Clash/Mihomo 配置
+ */
+export function generateClashYamlWithYamlRuleProviders(options: GenerateOptions): string {
+  const config = generateClashConfig(options);
+  const convertedConfig = convertMetaCubeXRuleProvidersToYaml(config);
+  return configToYaml(convertedConfig);
 }
 
 export {

@@ -16,6 +16,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   generateClashYaml: vi.fn(),
+  generateClashYamlWithYamlRuleProviders: vi.fn(),
   buildGenerateOptionsFromConfig: vi.fn(),
   getEffectiveTestOptions: vi.fn(),
   buildProxyProvidersFromConfig: vi.fn(),
@@ -43,6 +44,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@subboost/core/generator", () => ({
   generateClashYaml: mocks.generateClashYaml,
+  generateClashYamlWithYamlRuleProviders: mocks.generateClashYamlWithYamlRuleProviders,
 }));
 
 vi.mock("@subboost/core/subscription/config-utils", () => ({
@@ -165,6 +167,7 @@ describe("local subscription service", () => {
     mocks.buildProxyProvidersFromConfig.mockReturnValue(null);
     mocks.buildGenerateOptionsFromConfig.mockReturnValue({ nodes: [node()] });
     mocks.generateClashYaml.mockReturnValue("mixed-port: 7890\n");
+    mocks.generateClashYamlWithYamlRuleProviders.mockReturnValue("mixed-port: 7890\n# yaml-rules\n");
     mocks.prisma.subscription.findMany.mockResolvedValue([row()]);
     mocks.prisma.subscription.create.mockResolvedValue(row({ name: "Created" }));
     mocks.prisma.subscription.findFirst.mockResolvedValue(row());
@@ -611,6 +614,18 @@ describe("local subscription service", () => {
 
     mocks.prisma.subscription.findFirst.mockResolvedValueOnce(null);
     await expect(refreshSubscription("owner-1", "missing")).resolves.toBeNull();
+  });
+
+  it("generates the YAML rule-provider variant only when explicitly requested", async () => {
+    await expect(generateSubscriptionYaml("token-1", "yaml")).resolves.toMatchObject({
+      yaml: "mixed-port: 7890\n# yaml-rules\n",
+      name: "Saved",
+    });
+
+    expect(mocks.generateClashYamlWithYamlRuleProviders).toHaveBeenCalledWith(
+      expect.objectContaining({ nodes: [expect.objectContaining({ name: "Node" })] })
+    );
+    expect(mocks.generateClashYaml).not.toHaveBeenCalled();
   });
 
   it("generates YAML and updates access time when a subscription has nodes or proxy providers", async () => {
