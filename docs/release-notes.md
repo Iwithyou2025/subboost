@@ -10,7 +10,6 @@
 
 ### 修复
 
-- 修复订阅链接复制按钮失效的问题。
 - 修复仪表盘链接与 YAML 规则集选择不一致的问题。
 
 ## English
@@ -22,6 +21,4 @@
 - Persisted YAML rule-provider preference.
 
 ### Fixes
-
-- Fixed subscription link copy behavior.
-- Fixed dashboard link format consistency.
+- Fix the issue of inconsistency between dashboard links and YAML rule set selection.
