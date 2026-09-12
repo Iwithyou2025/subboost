@@ -52,10 +52,7 @@ type Props = {
   handleCreateSubscription: () => void;
 };
 
-export function buildYamlRuleSubscriptionUrl(subscriptionUrl: string): string {
-  if (!subscriptionUrl) return "";
-  return subscriptionUrl.replace(/\/config\.yaml(?=([?#]|$))/, "/config-yaml.yaml");
-}
+
 
 export function SubscriptionLinkDialog({
   open,
