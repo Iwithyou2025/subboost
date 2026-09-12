@@ -139,7 +139,7 @@ describe("Header", () => {
   });
 
   it("renders a linked new release badge outside the home link", () => {
-    const releaseUrl = "https://github.com/SubBoost/subboost/releases/tag/v9.8.7";
+    const releaseUrl = "https://github.com/Iwithyou2025/subboost/releases/tag/v9.8.7";
     const html = renderHeader({
       mode: "local",
       extraBrandBadge: {

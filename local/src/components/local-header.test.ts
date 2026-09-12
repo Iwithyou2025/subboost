@@ -59,7 +59,7 @@ describe("LocalHeader", () => {
           JSON.stringify({
             hasUpdate: true,
             latestTag: "v9.8.7",
-            releaseUrl: "https://github.com/SubBoost/subboost/releases/tag/v9.8.7",
+            releaseUrl: "https://github.com/Iwithyou2025/subboost/releases/tag/v9.8.7",
           })
         )
       )
@@ -78,7 +78,7 @@ describe("LocalHeader", () => {
     );
     expect(mocks.setState).toHaveBeenCalledWith({
       label: "new",
-      href: "https://github.com/SubBoost/subboost/releases/tag/v9.8.7",
+      href: "https://github.com/Iwithyou2025/subboost/releases/tag/v9.8.7",
       external: true,
       title: "SubBoost v9.8.7 已发布",
       ariaLabel: "SubBoost v9.8.7 已发布",
@@ -93,7 +93,7 @@ describe("LocalHeader", () => {
           JSON.stringify({
             hasUpdate: true,
             latestTag: " ",
-            releaseUrl: "https://github.com/SubBoost/subboost/releases/latest",
+            releaseUrl: "https://github.com/Iwithyou2025/subboost/releases/latest",
           })
         )
       )
@@ -104,7 +104,7 @@ describe("LocalHeader", () => {
 
     expect(mocks.setState).toHaveBeenCalledWith({
       label: "new",
-      href: "https://github.com/SubBoost/subboost/releases/latest",
+      href: "https://github.com/Iwithyou2025/subboost/releases/latest",
       external: true,
       title: "SubBoost 有新版本",
       ariaLabel: "SubBoost 有新版本",
@@ -184,7 +184,7 @@ describe("LocalHeader", () => {
         JSON.stringify({
           hasUpdate: true,
           latestTag: "v9.8.7",
-          releaseUrl: "https://github.com/SubBoost/subboost/releases/tag/v9.8.7",
+          releaseUrl: "https://github.com/Iwithyou2025/subboost/releases/tag/v9.8.7",
         })
       )
     );

@@ -514,7 +514,7 @@ ENV
       trap 'rm -rf "$home"' EXIT
       mkdir -p "$home/bin"
       cat > "$home/.env" <<'ENV'
-SUBBOOST_RELEASE_URL=https://github.com/SubBoost/subboost/releases/download/v2.4.0/release.json
+SUBBOOST_RELEASE_URL=https://github.com/Iwithyou2025/subboost/releases/download/v2.4.0/release.json
 SUBBOOST_IMAGE=old-image
 POSTGRES_DB=subboost
 POSTGRES_USER=subboost
@@ -593,10 +593,10 @@ JSON
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Detected old fixed release update source");
-    expect(result.stdout).toContain("https://github.com/SubBoost/subboost/releases/latest/download/release.json");
+    expect(result.stdout).toContain("https://github.com/Iwithyou2025/subboost/releases/latest/download/release.json");
     expect(result.stdout).toContain("pull_image=new-image");
     expect(result.stdout).toContain(
-      "SUBBOOST_RELEASE_URL=https://github.com/SubBoost/subboost/releases/latest/download/release.json"
+      "SUBBOOST_RELEASE_URL=https://github.com/Iwithyou2025/subboost/releases/latest/download/release.json"
     );
   }, 10_000);
 

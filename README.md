@@ -78,7 +78,7 @@ npm run check:local-app
 
 The public SubBoost source code is licensed under the [GNU Affero General Public License v3.0 only](./LICENSE).
 
-If you modify SubBoost and provide it to users over a network, AGPL-3.0 requires you to offer those users the corresponding source code. The public source entry is [SubBoost/subboost](https://github.com/SubBoost/subboost).
+If you modify SubBoost and provide it to users over a network, AGPL-3.0 requires you to offer those users the corresponding source code. The public source entry is [SubBoost/subboost](https://github.com/Iwithyou2025//subboost).
 
 ## Disclaimer
 

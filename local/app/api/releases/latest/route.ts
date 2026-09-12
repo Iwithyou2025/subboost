@@ -70,7 +70,7 @@ export async function GET() {
 
     const releaseUrl =
       readObjectString(releaseData, "html_url") ??
-      `https://github.com/SubBoost/subboost/releases/tag/${latestTag}`;
+      `https://github.com/Iwithyou2025/subboost/releases/tag/${latestTag}`;
 
     return response({
       currentVersion,

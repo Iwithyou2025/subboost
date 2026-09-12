@@ -78,7 +78,7 @@ npm run check:local-app
 
 SubBoost 公开源码以 [GNU Affero General Public License v3.0 only](./LICENSE) 授权。
 
-如果你修改 SubBoost 并通过网络向用户提供服务，AGPL-3.0 要求你向这些用户提供对应源码。公开源码入口是 [SubBoost/subboost](https://github.com/SubBoost/subboost)。
+如果你修改 SubBoost 并通过网络向用户提供服务，AGPL-3.0 要求你向这些用户提供对应源码。公开源码入口是 [SubBoost/subboost](https://github.com/Iwithyou2025/subboost)。
 
 ## 免责声明
 

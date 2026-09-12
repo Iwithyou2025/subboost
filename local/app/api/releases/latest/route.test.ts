@@ -36,7 +36,7 @@ describe("local latest release route", () => {
       vi.fn(async () =>
         releaseResponse({
           tag_name: "v2.3.21",
-          html_url: "https://github.com/SubBoost/subboost/releases/tag/v2.3.21",
+          html_url: "https://github.com/Iwithyou2025/subboost/releases/tag/v2.3.21",
         })
       )
     );
@@ -45,7 +45,7 @@ describe("local latest release route", () => {
       currentVersion: "2.3.20",
       latestVersion: "2.3.21",
       latestTag: "v2.3.21",
-      releaseUrl: "https://github.com/SubBoost/subboost/releases/tag/v2.3.21",
+      releaseUrl: "https://github.com/Iwithyou2025/subboost/releases/tag/v2.3.21",
       hasUpdate: true,
     });
     expect(fetch).toHaveBeenCalledWith(
@@ -63,7 +63,7 @@ describe("local latest release route", () => {
       vi.fn(async () =>
         releaseResponse({
           tag_name: "v2.3.21",
-          html_url: "https://github.com/SubBoost/subboost/releases/tag/v2.3.21",
+          html_url: "https://github.com/Iwithyou2025/subboost/releases/tag/v2.3.21",
         })
       )
     );
@@ -91,7 +91,7 @@ describe("local latest release route", () => {
       currentVersion: "2.3.20",
       latestVersion: "2.3.21",
       latestTag: "v2.3.21",
-      releaseUrl: "https://github.com/SubBoost/subboost/releases/tag/v2.3.21",
+      releaseUrl: "https://github.com/Iwithyou2025/subboost/releases/tag/v2.3.21",
       hasUpdate: true,
     });
   });
@@ -157,7 +157,7 @@ describe("local latest release route", () => {
       vi.fn(async () =>
         releaseResponse({
           tag_name: "v2.3.21-beta.1",
-          html_url: "https://github.com/SubBoost/subboost/releases/tag/v2.3.21-beta.1",
+          html_url: "https://github.com/Iwithyou2025/subboost/releases/tag/v2.3.21-beta.1",
         })
       )
     );

@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 DEFAULT_HOME="/opt/subboost"
-DEFAULT_STABLE_RELEASE_URL="https://github.com/SubBoost/subboost/releases/latest/download/release.json"
+DEFAULT_STABLE_RELEASE_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/release.json"
 DEFAULT_BACKUP_RETENTION_COUNT="10"
 SUBBOOST_HOME="${SUBBOOST_HOME:-$DEFAULT_HOME}"
 ENV_FILE="$SUBBOOST_HOME/.env"
@@ -162,7 +162,7 @@ write_runtime_env_value() {
 
 is_official_fixed_release_url() {
   case "$1" in
-    https://github.com/SubBoost/subboost/releases/download/v[0-9]*.[0-9]*.[0-9]*/release.json) return 0 ;;
+    https://github.com/Iwithyou2025/subboost/releases/download/v[0-9]*.[0-9]*.[0-9]*/release.json) return 0 ;;
     *) return 1 ;;
   esac
 }
