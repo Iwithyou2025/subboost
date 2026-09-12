@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { QrCode } from "lucide-react";
 import QRCode from "qrcode";
 
@@ -64,9 +65,12 @@ export function SubscriptionQrHoverButton({ subscriptionUrl }: Props) {
 
           <div className="rounded-md bg-white p-[2mm]">
             {qrDataUrl ? (
-              <img
+              <Image
                 src={qrDataUrl}
                 alt="订阅链接二维码"
+                width={256}
+                height={256}
+                unoptimized
                 className="block"
                 style={{
                   width: "20mm",
