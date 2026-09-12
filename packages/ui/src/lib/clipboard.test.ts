@@ -6,6 +6,7 @@ function stubLegacyClipboard(result: boolean | Error) {
     value: "",
     style: {} as Record<string, string>,
     setAttribute: vi.fn(),
+    focus: vi.fn(),
     select: vi.fn(),
     setSelectionRange: vi.fn(),
     remove: vi.fn(),
@@ -35,6 +36,7 @@ describe("copyTextToClipboard", () => {
 
   it("uses the modern clipboard API when available", async () => {
     const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("isSecureContext", true);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     vi.stubGlobal("document", undefined);
 
@@ -44,6 +46,7 @@ describe("copyTextToClipboard", () => {
 
   it("uses a hidden textarea on non-secure origins", async () => {
     const dom = stubLegacyClipboard(true);
+    vi.stubGlobal("isSecureContext", false);
     vi.stubGlobal("navigator", {});
 
     await expect(copyTextToClipboard("http://local.subboost.test/sub")).resolves.toBe(true);
@@ -60,6 +63,7 @@ describe("copyTextToClipboard", () => {
   it("falls back after modern copy is rejected and cleans up failures", async () => {
     const writeText = vi.fn(async () => { throw new Error("denied"); });
     const dom = stubLegacyClipboard(new Error("copy blocked"));
+    vi.stubGlobal("isSecureContext", true);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
 
     await expect(copyTextToClipboard("http://local.subboost.test/sub")).resolves.toBe(false);
@@ -69,6 +73,7 @@ describe("copyTextToClipboard", () => {
   });
 
   it("reports failure when no browser document is available", async () => {
+    vi.stubGlobal("isSecureContext", false);
     vi.stubGlobal("navigator", {});
     vi.stubGlobal("document", undefined);
 

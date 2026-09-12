@@ -233,6 +233,7 @@ function stubDocumentActions() {
     value: "",
     style: {} as Record<string, string>,
     setAttribute: vi.fn(),
+    focus: vi.fn(),
     select: vi.fn(),
     setSelectionRange: vi.fn(),
     remove: vi.fn(),
@@ -399,6 +400,7 @@ describe("SubscriptionDashboardSurface", () => {
 
   it("falls back to legacy copy for non-secure self-host origins", async () => {
     const dom = stubDocumentActions();
+    vi.stubGlobal("isSecureContext", false);
     vi.stubGlobal("navigator", {});
     const { setters } = renderSurface(createAdapter(), { 0: [subscription], 1: false, 2: null, 3: null });
 

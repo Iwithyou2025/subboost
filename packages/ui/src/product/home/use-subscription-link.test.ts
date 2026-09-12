@@ -610,11 +610,13 @@ describe("useSubscriptionLink", () => {
       value: "",
       style: {} as Record<string, string>,
       setAttribute: vi.fn(),
+      focus: vi.fn(),
       select: vi.fn(),
       setSelectionRange: vi.fn(),
       remove: vi.fn(),
     };
     const execCommand = vi.fn(() => true);
+    vi.stubGlobal("isSecureContext", false);
     vi.stubGlobal("navigator", {});
     vi.stubGlobal("document", {
       createElement: vi.fn(() => textarea),
