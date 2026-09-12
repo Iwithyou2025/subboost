@@ -57,8 +57,7 @@ export function SubscriptionQrHoverButton({ subscriptionUrl }: Props) {
           <span className="hidden sm:inline">二维码</span>
         </Button>
 
-        <div className="invisible absolute bottom-full right-0 z-50 pb-2 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-          <div className="w-max rounded-xl border border-white/10 bg-[#111318] p-3 shadow-2xl">
+          <div className="invisible absolute bottom-full left-1/2 z-50 -translate-x-1/2 pb-2 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">          <div className="w-max rounded-xl border border-white/10 bg-[#111318] p-3 shadow-2xl">
             <div className="mb-2 whitespace-nowrap text-center text-xs text-white/60">
               查看二维码
             </div>
