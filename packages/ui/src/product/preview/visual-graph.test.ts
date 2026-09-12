@@ -57,6 +57,7 @@ vi.mock("react", async (importOriginal) => {
 
 vi.mock("zustand/react/shallow", () => ({ useShallow: (selector: any) => selector }));
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   Network: () => null,
   Server: () => null,
 }));

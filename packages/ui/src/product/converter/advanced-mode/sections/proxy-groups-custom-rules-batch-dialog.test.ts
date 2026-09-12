@@ -42,6 +42,7 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   AlertTriangle: () => React.createElement("span", null, "alert-icon"),
   ArrowRight: () => React.createElement("span", null, "arrow-icon"),
   Upload: () => React.createElement("span", null, "upload-icon"),

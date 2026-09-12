@@ -48,6 +48,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   AlertTriangle: () => React.createElement("span", null, "alert-icon"),
   Download: () => React.createElement("span", null, "download-icon"),
   ExternalLink: () => React.createElement("span", null, "external-icon"),

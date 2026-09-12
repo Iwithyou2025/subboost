@@ -5,6 +5,7 @@ import type { CustomRoutingRuleSetItem } from "@subboost/core/rules/custom-routi
 import type { CustomProxyGroup, CustomRule } from "@subboost/core/types/config";
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   ArrowRight: () => null,
   Shield: () => null,
 }));

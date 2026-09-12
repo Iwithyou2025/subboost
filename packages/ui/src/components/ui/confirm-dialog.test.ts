@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   AlertTriangle: () => React.createElement("span", null, "AlertTriangle"),
   HelpCircle: () => React.createElement("span", null, "HelpCircle"),
   XCircle: () => React.createElement("span", null, "XCircle"),

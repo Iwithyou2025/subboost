@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   Check: () => null,
   Trash2: () => null,
 }));

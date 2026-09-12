@@ -56,6 +56,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => mocks.searchParams,
 }));
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   FileCode: () => null,
   Loader2: () => null,
   Plus: () => null,

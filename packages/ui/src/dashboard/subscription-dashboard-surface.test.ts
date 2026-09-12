@@ -44,6 +44,7 @@ vi.mock("react", async (importOriginal) => {
 
 vi.mock("next/link", () => ({ default: (props: any) => props.children }));
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   AlertTriangle: () => null,
   Check: () => null,
   Clock: () => null,

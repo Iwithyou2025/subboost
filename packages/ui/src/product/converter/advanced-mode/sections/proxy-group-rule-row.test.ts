@@ -8,6 +8,7 @@ const captures = vi.hoisted(() => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   ArrowRightLeft: () => React.createElement("span", null, "move-icon"),
   Trash2: () => React.createElement("span", null, "trash-icon"),
 }));

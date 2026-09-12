@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { delimiter, join } from "node:path";
 
 function findGitBashBin(): string | null {
@@ -12,9 +13,20 @@ function findGitBashBin(): string | null {
 }
 
 if (process.platform === "win32") {
-  const gitBashBin = findGitBashBin();
-  if (!gitBashBin) {
-    throw new Error("Git for Windows Bash is required to run SubBoost shell-script tests on Windows.");
+  const bashProbe = spawnSync("bash", ["--version"], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+
+  if (bashProbe.status !== 0) {
+    const gitBashBin = findGitBashBin();
+
+    if (!gitBashBin) {
+      throw new Error(
+        "Git for Windows Bash is required to run SubBoost shell-script tests on Windows."
+      );
+    }
+
+    process.env.PATH = `${gitBashBin}${delimiter}${process.env.PATH || ""}`;
   }
-  process.env.PATH = `${gitBashBin}${delimiter}${process.env.PATH || ""}`;
 }

@@ -25,6 +25,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   Bot: () => React.createElement("span", null, "Bot"),
   Eye: () => React.createElement("span", null, "Eye"),
   ExternalLink: () => React.createElement("span", null, "ExternalLink"),

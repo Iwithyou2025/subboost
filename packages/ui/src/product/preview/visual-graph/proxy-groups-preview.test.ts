@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   ArrowRight: () => null,
   Box: () => null,
   ChevronDown: () => null,

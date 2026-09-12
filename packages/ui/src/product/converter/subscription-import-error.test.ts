@@ -21,6 +21,7 @@ function collectButtons(node: unknown) {
 }
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   AlertCircle: () => React.createElement("span", null, "alert"),
   Clock: () => React.createElement("span", null, "clock"),
   Copy: () => React.createElement("span", null, "copy"),

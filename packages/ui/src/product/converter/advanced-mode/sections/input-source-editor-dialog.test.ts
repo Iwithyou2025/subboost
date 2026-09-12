@@ -20,6 +20,7 @@ vi.mock("@radix-ui/react-popover", () => ({
   Trigger: (props: any) => React.createElement("div", null, props.children),
 }));
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   CircleHelp: () => React.createElement("span", null, "circle-help-icon"),
   FileCode: () => React.createElement("span", null, "file-code-icon"),
   HelpCircle: () => React.createElement("span", null, "help-icon"),

@@ -13,6 +13,7 @@ const captures = vi.hoisted(() => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   AlertTriangle: () => React.createElement("span", null, "alert-icon"),
   Globe: () => React.createElement("span", null, "globe-icon"),
 }));

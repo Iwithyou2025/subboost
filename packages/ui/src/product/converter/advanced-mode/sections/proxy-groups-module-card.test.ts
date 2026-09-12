@@ -24,6 +24,7 @@ vi.mock("@radix-ui/react-popover", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   Check: () => React.createElement("span", null, "check-icon"),
   ChevronDown: () => React.createElement("span", null, "down-icon"),
   ChevronRight: () => React.createElement("span", null, "right-icon"),

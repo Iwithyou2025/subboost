@@ -57,6 +57,7 @@ vi.mock("@radix-ui/react-popover", () => ({
   Arrow: () => null,
 }));
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   CircleHelp: () => null,
   HelpCircle: () => null,
   Plus: () => null,

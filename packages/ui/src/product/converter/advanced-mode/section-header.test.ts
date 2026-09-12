@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   ChevronDown: () => React.createElement("span", null, "down-icon"),
   ChevronRight: () => React.createElement("span", null, "right-icon"),
 }));

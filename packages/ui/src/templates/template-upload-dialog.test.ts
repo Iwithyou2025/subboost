@@ -31,6 +31,7 @@ vi.mock("react/jsx-runtime", async (importOriginal) => {
 });
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   Globe: () => React.createElement("span", null, "globe-icon"),
   Loader2: () => React.createElement("span", null, "loader-icon"),
   Lock: () => React.createElement("span", null, "lock-icon"),

@@ -79,6 +79,7 @@ vi.mock("react/jsx-runtime", async (importOriginal) => {
 });
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   Globe: () => null,
   Heart: () => null,
   Loader2: () => null,
