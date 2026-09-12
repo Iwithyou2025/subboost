@@ -5,7 +5,7 @@ import { compareStableVersions, parseStableVersion } from "@local/lib/release-ve
 export const revalidate = 3600;
 
 const RELEASE_CACHE_SECONDS = 3600;
-const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/SubBoost/subboost/releases/latest";
+const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Iwithyou2025/subboost/releases/latest";
 
 const CACHE_HEADERS = {
   "Cache-Control": `public, max-age=${RELEASE_CACHE_SECONDS}, stale-while-revalidate=${RELEASE_CACHE_SECONDS}`,

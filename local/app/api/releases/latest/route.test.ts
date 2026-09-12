@@ -49,7 +49,7 @@ describe("local latest release route", () => {
       hasUpdate: true,
     });
     expect(fetch).toHaveBeenCalledWith(
-      "https://api.github.com/repos/SubBoost/subboost/releases/latest",
+      "https://api.github.com/repos/Iwithyou2025/subboost/releases/latest",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/vnd.github+json" }),
       })
