@@ -48,6 +48,7 @@ import {
   resolvePreferredSubscriptionUrl,
 } from "@subboost/ui/lib/subscription-rule-provider-format";
 
+import { SubscriptionQrHoverButton } from "./subscription-qr-hover-button";
 
 type UpdateSettingsPayload = {
   name: string;
@@ -584,6 +585,9 @@ function SubscriptionRow({
             </>
           )}
         </Button>
+        <SubscriptionQrHoverButton
+          subscriptionUrl={resolvePreferredSubscriptionUrl(sub.subscriptionUrl)}
+        />
         <Button
           variant="ghost"
           size="sm"
@@ -627,12 +631,14 @@ function QuickActionCard({
       <Card className="cursor-pointer hover:border-white/20 transition-colors">
         <CardContent className="pt-6">
           <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-lg ${iconClassName}`}>{icon}</div>
-            <div>
-              <h3 className="font-medium">{title}</h3>
+            <div className={`p-3 rounded-lg ${iconClassName}`}>
+              {icon}
+            </div>
+            <div className="flex-1">
+              <h3 className="font-medium mb-1">{title}</h3>
               <p className="text-sm text-white/50">{description}</p>
             </div>
-            <ExternalLink className="ml-auto h-5 w-5 text-white/40" />
+            <ExternalLink className="h-4 w-4 text-white/40" />
           </div>
         </CardContent>
       </Card>
