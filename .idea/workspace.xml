@@ -6,7 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="cf75a08e-9c19-4984-9493-ac61488d9068" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/local/scripts/selfhost-shell.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/local/scripts/selfhost-shell.test.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/packages/ui/src/dashboard/subscription-qr-hover-button.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/packages/ui/src/dashboard/subscription-qr-hover-button.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
