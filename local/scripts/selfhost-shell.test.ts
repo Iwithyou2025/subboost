@@ -491,8 +491,8 @@ ENV
     expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml config --services$/m);
     expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml pull$/m);
     expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml up -d db$/m);
-    expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml up -d --no-deps app$/m);
-    expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml up -d --no-deps cron$/m);
+    expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml up -d --no-deps --force-recreate app$/m);
+    expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml up -d --no-deps --force-recreate cron$/m);
     expect(result.stdout).toContain("SUBBOOST_IMAGE=new-image");
     expect(result.stdout).toContain("SUBBOOST_CANDIDATE_IMAGE=new-image");
     expect(result.stdout).toContain("SUBBOOST_COMPOSE_URL=file://");

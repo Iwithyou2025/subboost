@@ -52,7 +52,7 @@ ENV
           *"pg_dump -Fc"*) printf 'custom-dump'; return 0 ;;
           *"pg_restore --list"*) cat >/dev/null; return 0 ;;
           *"pg_restore --clean"*) cat >/dev/null; [ "${restoreFails ? "1" : "0"}" = "0" ]; return $? ;;
-          *"candidate-compose.yml"*" up -d --no-deps --force-recreate app")") printf 'candidate\n' > "$state"; return 0 ;;
+          *"candidate-compose.yml"*" up -d --no-deps --force-recreate app") printf 'candidate\n' > "$state"; return 0 ;;
           *"old-compose.yml"*" up -d app") printf 'old\n' > "$state"; return 0 ;;
         esac
         return 0
