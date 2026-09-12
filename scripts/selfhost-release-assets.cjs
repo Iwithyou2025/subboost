@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const DEFAULT_IMAGE_REPOSITORY = "ghcr.io/subboost/subboost";
+const DEFAULT_IMAGE_REPOSITORY = "ghcr.io/Iwithyou2025/subboost";
 const DEFAULT_OUTPUT = path.join("dist", "release-assets");
 const MANAGER_ASSET_NAME = "subboost-manager";
 const INSTALLER_DEFAULTS = [
@@ -40,7 +40,7 @@ const INSTALLER_DEFAULTS = [
     env: "SUBBOOST_INSTALLER_IMAGE",
     key: "installerImage",
     name: "DEFAULT_IMAGE",
-    value: "ghcr.io/subboost/subboost:latest",
+    value: "ghcr.io/Iwithyou2025/subboost:latest",
   },
 ];
 

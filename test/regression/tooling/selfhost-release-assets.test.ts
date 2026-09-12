@@ -63,7 +63,7 @@ function withTempVersionRepo(run: (root: string) => void): void {
         'DEFAULT_UPDATE_RELEASE_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/release.json"',
         'DEFAULT_COMPOSE_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/docker-compose.image.yml"',
         'DEFAULT_MANAGER_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/subboost-manager"',
-        'DEFAULT_IMAGE="ghcr.io/subboost/subboost:latest"',
+        'DEFAULT_IMAGE="ghcr.io/Iwithyou2025/subboost:latest"',
         "echo install",
         "",
       ].join("\r\n"),
@@ -83,9 +83,9 @@ describe("public selfhost release assets script", () => {
         "--output",
         "dist/assets",
         "--image",
-        "ghcr.io/subboost/subboost@sha256:abc123",
+        "ghcr.io/Iwithyou2025/subboost@sha256:abc123",
         "--image-repository",
-        "ghcr.io/subboost/subboost",
+        "ghcr.io/Iwithyou2025/subboost",
         "--release-tag",
         "v9.8.7",
         "--build-sha",
@@ -99,8 +99,8 @@ describe("public selfhost release assets script", () => {
         buildSha: "abcdef1234567890",
         buildVersion: "9.8.7+sha.abcdef123456",
         composeUrl: "https://github.com/Iwithyou2025/subboost/releases/download/v9.8.7/docker-compose.image.yml",
-        image: "ghcr.io/subboost/subboost@sha256:abc123",
-        imageTag: "ghcr.io/subboost/subboost:v9.8.7",
+        image: "ghcr.io/Iwithyou2025/subboost@sha256:abc123",
+        imageTag: "ghcr.io/Iwithyou2025/subboost:v9.8.7",
         installerUrl: "https://github.com/Iwithyou2025/subboost/releases/download/v9.8.7/install.sh",
         managerUrl: "https://github.com/Iwithyou2025/subboost/releases/download/v9.8.7/subboost-manager",
         version: "9.8.7",
@@ -128,14 +128,14 @@ describe("public selfhost release assets script", () => {
       expect(installScript).toContain(
         'DEFAULT_MANAGER_URL="https://github.com/Iwithyou2025/subboost/releases/download/v9.8.7/subboost-manager"'
       );
-      expect(installScript).toContain('DEFAULT_IMAGE="ghcr.io/subboost/subboost:v9.8.7"');
+      expect(installScript).toContain('DEFAULT_IMAGE="ghcr.io/Iwithyou2025/subboost:v9.8.7"');
       expect(installScript).not.toContain(
         'DEFAULT_COMPOSE_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/docker-compose.image.yml"'
       );
       expect(readFileSync(join(bundle.output, "subboost-manager"), "utf8")).not.toContain("\r");
       const releaseCompose = readFileSync(join(bundle.output, "docker-compose.image.yml"), "utf8");
       expect(releaseCompose).toContain(
-        "image: ${SUBBOOST_CANDIDATE_IMAGE:-ghcr.io/subboost/subboost@sha256:abc123}",
+        "image: ${SUBBOOST_CANDIDATE_IMAGE:-ghcr.io/Iwithyou2025/subboost@sha256:abc123}",
       );
       expect(releaseCompose).not.toContain("${SUBBOOST_IMAGE:?set SUBBOOST_IMAGE}");
       expectExecutable(join(bundle.output, "install.sh"));
@@ -152,7 +152,7 @@ describe("public selfhost release assets script", () => {
   it("honors GitHub workflow environment defaults and validates empty explicit release args", () => {
     process.env.SUBBOOST_RELEASE_ASSET_BASE_URL = "https://github.com/Iwithyou2025/subboost/releases/download/v9.8.7";
     process.env.SUBBOOST_RELEASE_ASSET_OUTPUT = "dist/from-env";
-    process.env.SUBBOOST_IMAGE = "ghcr.io/subboost/subboost@sha256:envdigest";
+    process.env.SUBBOOST_IMAGE = "ghcr.io/Iwithyou2025/subboost@sha256:envdigest";
     process.env.SUBBOOST_IMAGE_REPOSITORY = "ghcr.io/env/subboost";
     process.env.SUBBOOST_RELEASE_IMAGE_TAG = "ghcr.io/env/subboost:v9.8.7";
     process.env.SUBBOOST_BUILD_SHA = "fedcba9876543210";
@@ -164,16 +164,16 @@ describe("public selfhost release assets script", () => {
       "https://github.com/Iwithyou2025/subboost/releases/download/dev/docker-compose.image.yml";
     process.env.SUBBOOST_INSTALLER_MANAGER_URL =
       "https://github.com/Iwithyou2025/subboost/releases/download/dev/subboost-manager";
-    process.env.SUBBOOST_INSTALLER_IMAGE = "ghcr.io/subboost/subboost:dev";
+    process.env.SUBBOOST_INSTALLER_IMAGE = "ghcr.io/Iwithyou2025/subboost:dev";
 
     expect(publicReleaseAssets.parseArgs([])).toMatchObject({
       baseUrl: "https://github.com/Iwithyou2025/subboost/releases/download/v9.8.7",
       buildSha: "fedcba9876543210",
-      image: "ghcr.io/subboost/subboost@sha256:envdigest",
+      image: "ghcr.io/Iwithyou2025/subboost@sha256:envdigest",
       imageRepository: "ghcr.io/env/subboost",
       imageTag: "ghcr.io/env/subboost:v9.8.7",
       installerComposeUrl: "https://github.com/Iwithyou2025/subboost/releases/download/dev/docker-compose.image.yml",
-      installerImage: "ghcr.io/subboost/subboost:dev",
+      installerImage: "ghcr.io/Iwithyou2025/subboost:dev",
       installerManagerUrl: "https://github.com/Iwithyou2025/subboost/releases/download/dev/subboost-manager",
       installerReleaseUrl: "https://github.com/Iwithyou2025/subboost/releases/download/dev/release.json",
       installerUpdateReleaseUrl: "https://github.com/Iwithyou2025/subboost/releases/download/dev/release.json",
@@ -199,9 +199,9 @@ describe("public selfhost release assets script", () => {
         "--output",
         "dist/dev-assets",
         "--image",
-        "ghcr.io/subboost/subboost@sha256:devdigest",
+        "ghcr.io/Iwithyou2025/subboost@sha256:devdigest",
         "--image-tag",
-        "ghcr.io/subboost/subboost:dev",
+        "ghcr.io/Iwithyou2025/subboost:dev",
         "--release-tag",
         "dev",
         "--build-sha",
@@ -217,7 +217,7 @@ describe("public selfhost release assets script", () => {
         "--installer-manager-url",
         "https://github.com/Iwithyou2025/subboost/releases/download/dev/subboost-manager",
         "--installer-image",
-        "ghcr.io/subboost/subboost:dev",
+        "ghcr.io/Iwithyou2025/subboost:dev",
       ]);
 
       const bundle = publicReleaseAssets.createBundle(publicRoot, args);
@@ -234,11 +234,11 @@ describe("public selfhost release assets script", () => {
       expect(installScript).toContain(
         'DEFAULT_MANAGER_URL="https://github.com/Iwithyou2025/subboost/releases/download/dev/subboost-manager"'
       );
-      expect(installScript).toContain('DEFAULT_IMAGE="ghcr.io/subboost/subboost:dev"');
+      expect(installScript).toContain('DEFAULT_IMAGE="ghcr.io/Iwithyou2025/subboost:dev"');
       expect(installScript).not.toContain("releases/latest/download");
       expect(JSON.parse(readFileSync(join(bundle.output, "release.json"), "utf8"))).toMatchObject({
-        image: "ghcr.io/subboost/subboost@sha256:devdigest",
-        imageTag: "ghcr.io/subboost/subboost:dev",
+        image: "ghcr.io/Iwithyou2025/subboost@sha256:devdigest",
+        imageTag: "ghcr.io/Iwithyou2025/subboost:dev",
         installerUrl: "https://github.com/Iwithyou2025/subboost/releases/download/dev/install.sh",
       });
 
@@ -269,9 +269,9 @@ describe("public selfhost release assets script", () => {
           "--build-sha",
           "abcdef1234567890",
           "--image",
-          "ghcr.io/subboost/subboost@sha256:abc123",
+          "ghcr.io/Iwithyou2025/subboost@sha256:abc123",
           "--image-tag",
-          "ghcr.io/subboost/subboost:v9.8.7",
+          "ghcr.io/Iwithyou2025/subboost:v9.8.7",
           "--output",
           "dist/dry-run",
           "--tag",
@@ -283,7 +283,7 @@ describe("public selfhost release assets script", () => {
       const output = log.mock.calls.map((call) => call.join(" ")).join("\n");
       expect(output).toContain("Usage:");
       expect(output).toContain("[selfhost-release-assets] output=");
-      expect(output).toContain("ghcr.io/subboost/subboost@sha256:abc123");
+      expect(output).toContain("ghcr.io/Iwithyou2025/subboost@sha256:abc123");
       expect(output).toContain('"managerUrl": "subboost-manager"');
       expect(existsSync(join(publicRoot, "dist", "dry-run"))).toBe(false);
     });
@@ -323,20 +323,20 @@ describe("public selfhost release assets script", () => {
         "--build-sha",
         "abcdef1234567890",
         "--image-tag",
-        "ghcr.io/subboost/subboost:v1.2.3",
+        "ghcr.io/Iwithyou2025/subboost:v1.2.3",
       ]);
       publicReleaseAssets.main([
         "--build-sha",
         "abcdef1234567890",
         "--image-tag",
-        "ghcr.io/subboost/subboost:v1.2.3",
+        "ghcr.io/Iwithyou2025/subboost:v1.2.3",
         "--output",
         "dist/real",
       ]);
 
       const output = log.mock.calls.map((call) => call.join(" ")).join("\n");
       expect(output).toContain("Usage:");
-      expect(output).toContain("[selfhost-release-assets] image=ghcr.io/subboost/subboost:v1.2.3");
+      expect(output).toContain("[selfhost-release-assets] image=ghcr.io/Iwithyou2025/subboost:v1.2.3");
       expect(existsSync(join(root, "dist", "real", "release.json"))).toBe(true);
       log.mockRestore();
     } finally {

@@ -7,7 +7,7 @@ DEFAULT_RELEASE_URL="https://github.com/Iwithyou2025/subboost/releases/latest/do
 DEFAULT_UPDATE_RELEASE_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/release.json"
 DEFAULT_COMPOSE_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/docker-compose.image.yml"
 DEFAULT_MANAGER_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/subboost-manager"
-DEFAULT_IMAGE="ghcr.io/subboost/subboost:latest"
+DEFAULT_IMAGE="ghcr.io/Iwithyou2025/subboost:latest"
 
 SUBBOOST_HOME="${SUBBOOST_HOME:-$DEFAULT_HOME}"
 SUBBOOST_BIN="${SUBBOOST_BIN:-$DEFAULT_BIN}"
