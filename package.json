@@ -79,5 +79,10 @@
     "postcss": "8.5.23",
     "sharp": "0.35.3",
     "valibot": "1.4.2"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.9.0": true,
+    "prisma@7.9.0": true,
+    "unrs-resolver@1.12.2": true
   }
 }
