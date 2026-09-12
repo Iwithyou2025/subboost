@@ -43,6 +43,12 @@ import {
 import { SubscriptionSettingsDialog } from "@subboost/ui/dashboard/subscription-settings-dialog";
 import type { RefreshSubscriptionResponse, Subscription } from "@subboost/ui/dashboard/dashboard-types";
 
+
+import {
+  resolvePreferredSubscriptionUrl,
+} from "@subboost/ui/lib/subscription-rule-provider-format";
+
+
 type UpdateSettingsPayload = {
   name: string;
   smartNodeMatchingEnabled: boolean;
@@ -172,12 +178,23 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
     });
   }, [subscriptions, user]);
 
-  const copyToClipboard = async (subscriptionUrl: string, id: string) => {
-    const copied = await copyTextToClipboard(subscriptionUrl);
+  const copyToClipboard = async (
+      subscriptionUrl: string,
+      id: string
+  ) => {
+    const targetUrl =
+        resolvePreferredSubscriptionUrl(subscriptionUrl);
+
+    const copied = await copyTextToClipboard(targetUrl);
+
     if (!copied) {
-      toast({ title: "复制失败，请手动复制订阅链接", variant: "destructive" });
+      toast({
+        title: "复制失败，请手动复制订阅链接",
+        variant: "destructive",
+      });
       return;
     }
+
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };

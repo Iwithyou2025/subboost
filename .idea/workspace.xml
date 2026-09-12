@@ -4,7 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cf75a08e-9c19-4984-9493-ac61488d9068" name="Changes" comment="" />
+    <list default="true" id="cf75a08e-9c19-4984-9493-ac61488d9068" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/packages/ui/src/lib/subscription-rule-provider-format.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/packages/ui/src/dashboard/subscription-dashboard-surface.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/packages/ui/src/dashboard/subscription-dashboard-surface.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/packages/ui/src/product/home/subscription-link-dialog.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/packages/ui/src/product/home/subscription-link-dialog.tsx" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -55,7 +60,7 @@
       <updated>1788543070072</updated>
       <workItem from="1788543071238" duration="3280000" />
       <workItem from="1788589492308" duration="7003000" />
-      <workItem from="1789183730155" duration="6079000" />
+      <workItem from="1789183730155" duration="8417000" />
     </task>
     <servers />
   </component>

@@ -22,6 +22,16 @@ import {
   type AutoUpdateIntervalPolicy,
 } from "@subboost/core/subscription/auto-update-interval";
 
+
+import {
+  buildYamlRuleSubscriptionUrl,
+  getSubscriptionRuleProviderFormat,
+  setSubscriptionRuleProviderFormat,
+} from "@subboost/ui/lib/subscription-rule-provider-format";
+
+export { buildYamlRuleSubscriptionUrl };
+
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -68,7 +78,34 @@ export function SubscriptionLinkDialog({
 }: Props) {
   const close = () => onOpenChange(false);
   const minAutoUpdateLabel = getAutoUpdateIntervalPolicyMinLabel(autoUpdatePolicy);
-  const [useYamlRuleProviders, setUseYamlRuleProviders] = React.useState(false);
+
+  const [useYamlRuleProviders, setUseYamlRuleProviders] =
+      React.useState(
+          () =>
+              getSubscriptionRuleProviderFormat(subscriptionUrl) === "yaml"
+      );
+
+  React.useEffect(() => {
+    if (!open || !subscriptionUrl) {
+      return;
+    }
+
+    setUseYamlRuleProviders(
+        getSubscriptionRuleProviderFormat(subscriptionUrl) === "yaml"
+    );
+  }, [open, subscriptionUrl]);
+
+  const handleYamlRuleProvidersChange = React.useCallback(
+      (checked: boolean) => {
+        setUseYamlRuleProviders(checked);
+
+        setSubscriptionRuleProviderFormat(
+            subscriptionUrl,
+            checked ? "yaml" : "mrs"
+        );
+      },
+      [subscriptionUrl]
+  );
 
   const yamlSubscriptionUrl = React.useMemo(
     () => buildYamlRuleSubscriptionUrl(subscriptionUrl),
@@ -173,9 +210,9 @@ export function SubscriptionLinkDialog({
                   <p className="text-xs text-white/50">关闭：使用 MRS　开启：使用 YAML</p>
                 </div>
                 <Switch
-                  checked={useYamlRuleProviders}
-                  onCheckedChange={setUseYamlRuleProviders}
-                  aria-label="使用 YAML 规则集"
+                    checked={useYamlRuleProviders}
+                    onCheckedChange={handleYamlRuleProvidersChange}
+                    aria-label="使用 YAML 规则集"
                 />
               </div>
             </div>
