@@ -364,7 +364,7 @@ ENV
             *" config" | *" pull" | *" stop cron app") return 0 ;;
             *"pg_dump -Fc"*) printf 'custom-dump'; return 0 ;;
             *"pg_restore --list"* | *"pg_restore --clean"*) cat >/dev/null; return 0 ;;
-            *"candidate-compose.yml up -d --no-deps cron") return 1 ;;
+            *"candidate-compose.yml up -d --no-deps  --force-recreate cron") return 1 ;;
             *" up -d "*) return 0 ;;
             *" ps -q app") printf 'app-id\\n'; return 0 ;;
           esac
@@ -394,11 +394,11 @@ ENV
     expect(result.stdout).toContain(
       "update_status=1 parent_image=old-image parent_candidate_image=old-candidate-image",
     );
-    expect(result.stdout).toMatch(/image=new-image candidate_image=new-image command=compose.*candidate-compose\.yml up -d --no-deps cron$/m);
+    expect(result.stdout).toMatch(/image=new-image candidate_image=new-image command=compose.*candidate-compose\.yml up -d --no-deps  --force-recreate cron$/m);
     expect(result.stdout).toMatch(/image=new-image candidate_image=new-image command=compose.*candidate-compose\.yml stop cron app$/m);
     expect(result.stdout).toMatch(/image=old-image candidate_image=old-candidate-image command=compose.*old-compose\.yml up -d db$/m);
     expect(result.stdout).toMatch(/image=old-image candidate_image=old-candidate-image command=compose.*old-compose\.yml up -d app$/m);
-    expect(result.stdout).toMatch(/image=old-image candidate_image=old-candidate-image command=compose.*old-compose\.yml up -d --no-deps cron$/m);
+    expect(result.stdout).toMatch(/image=old-image candidate_image=old-candidate-image command=compose.*old-compose\.yml up -d --no-deps --force-recreate cron$/m);
     expect(result.stdout).not.toMatch(/old-compose\.yml.*up -d cron(?:\s|$)/);
   }, 10_000);
 

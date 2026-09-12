@@ -520,7 +520,7 @@ fi
     activate_staged_file "${SUBBOOST_BIN:-/usr/local/bin/subboost}" || update_error="candidate manager activation failed"
   fi
   if [ -z "$update_error" ]; then
-    compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d --no-deps cron || update_error="candidate cron startup failed"
+    compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d --no-deps --force-recreate cron || update_error="candidate cron startup failed"
   fi
 
   if [ -n "$update_error" ]; then
@@ -557,7 +557,7 @@ fi
       say "Rollback dump preserved at: $rollback_dump"
       return 1
     fi
-    compose_files "$old_env" "$old_compose" up -d --no-deps cron
+    compose_files "$old_env" "$old_compose" up -d --no-deps --force-recreate cron
     docker_cmd image rm "$rollback_tag" >/dev/null 2>&1 || true
     say "Previous version restored successfully."
     return 1
