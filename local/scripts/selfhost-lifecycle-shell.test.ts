@@ -52,7 +52,7 @@ ENV
           *"pg_dump -Fc"*) printf 'custom-dump'; return 0 ;;
           *"pg_restore --list"*) cat >/dev/null; return 0 ;;
           *"pg_restore --clean"*) cat >/dev/null; [ "${restoreFails ? "1" : "0"}" = "0" ]; return $? ;;
-          *"candidate-compose.yml"*" up -d --no-deps app") printf 'candidate\n' > "$state"; return 0 ;;
+          *"candidate-compose.yml"*" up -d --no-deps --force-recreate app")") printf 'candidate\n' > "$state"; return 0 ;;
           *"old-compose.yml"*" up -d app") printf 'old\n' > "$state"; return 0 ;;
         esac
         return 0
@@ -94,7 +94,9 @@ describe("self-host update rollback lifecycle", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Automatic rollback stopped: database restore failed");
     expect(result.stdout).toContain("Keep app and cron stopped");
-    expect(result.stdout).toMatch(/old-compose\.yml.* stop cron app/);
+    expect(result.stdout).toMatch(
+        /candidate-compose\.yml up -d --no-deps --force-recreate app$/m
+    );
     expect(result.stdout).not.toMatch(/old-compose\.yml.* up -d app/);
   });
 

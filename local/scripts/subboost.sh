@@ -395,7 +395,8 @@ update_cmd() {
   local old_manager="$TMP_DIR/old-manager"
   local rollback_dump="$BACKUP_DIR/update-rollback-$(date -u +%Y%m%dT%H%M%SZ).dump"
   local image="${SUBBOOST_IMAGE:-}" compose_url="" manager_url="" services=""
-  local app_id old_image_id rollback_tag old_image_ref update_error restore_error db_ready
+local app_id old_image_id rollback_tag old_image_ref
+local update_error restore_error db_ready activated_image
   local manager_present=0 old_manager_present=0
   local -a restore_status
   mkdir -p "$TMP_DIR"
@@ -403,22 +404,38 @@ update_cmd() {
     say "Detected old fixed release update source; switching updates to stable latest."
     release_url="$DEFAULT_STABLE_RELEASE_URL"
   fi
-  if [ -n "$release_url" ] && download_to_temp "$release_url" "$release_file" 2>/dev/null; then
-    image="$(json_get image "$release_file" || true)"
-    compose_url="$(resolve_url "$release_url" "$(json_get composeUrl "$release_file" || true)")"
-    manager_url="$(resolve_url "$release_url" "$(json_get managerUrl "$release_file" || true)")"
-    [ -n "$image" ] && [ -n "$compose_url" ] && [ -n "$manager_url" ] || die "Release manifest is missing image, composeUrl, or managerUrl."
-    download_to_temp "$compose_url" "$candidate_compose"
-    download_to_temp "$manager_url" "$candidate_manager"
-    [ -s "$candidate_manager" ] && bash -n "$candidate_manager" || die "Candidate manager is invalid."
-  else
-    say "Release manifest unavailable; updating current image and compose only."
-    cp "$COMPOSE_FILE" "$candidate_compose"
-    if [ -f "${SUBBOOST_BIN:-/usr/local/bin/subboost}" ]; then
-      sudo_do cp "${SUBBOOST_BIN:-/usr/local/bin/subboost}" "$candidate_manager"
-      manager_present=1
-    fi
+if [ -n "$release_url" ]; then
+  if ! download_to_temp "$release_url" "$release_file"; then
+    die "Release manifest unavailable: $release_url"
   fi
+
+  image="$(json_get image "$release_file" || true)"
+  compose_url="$(resolve_url "$release_url" "$(json_get composeUrl "$release_file" || true)")"
+  manager_url="$(resolve_url "$release_url" "$(json_get managerUrl "$release_file" || true)")"
+
+  [ -n "$image" ] &&
+    [ -n "$compose_url" ] &&
+    [ -n "$manager_url" ] ||
+    die "Release manifest is missing image, composeUrl, or managerUrl."
+
+  download_to_temp "$compose_url" "$candidate_compose"
+  download_to_temp "$manager_url" "$candidate_manager"
+
+  [ -s "$candidate_manager" ] &&
+    bash -n "$candidate_manager" ||
+    die "Candidate manager is invalid."
+else
+  say "No release manifest configured; updating current image and compose only."
+
+  cp "$COMPOSE_FILE" "$candidate_compose"
+
+  if [ -f "${SUBBOOST_BIN:-/usr/local/bin/subboost}" ]; then
+    sudo_do cp \
+      "${SUBBOOST_BIN:-/usr/local/bin/subboost}" \
+      "$candidate_manager"
+    manager_present=1
+  fi
+fi
   [ -n "$manager_url" ] && manager_present=1
   [ -n "$image" ] || die "SUBBOOST_IMAGE is missing."
   read_env_file > "$candidate_env"
@@ -478,7 +495,7 @@ update_cmd() {
   update_error=""
   compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d db || update_error="candidate database startup failed"
   if [ -z "$update_error" ]; then
-    compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d --no-deps app || update_error="candidate app startup or migration failed"
+    compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d --no-deps --force-recreate app || update_error="candidate app startup or migration failed"
   fi
   if [ -z "$update_error" ] && ! wait_for_health; then
     update_error="candidate health check failed"
@@ -486,6 +503,16 @@ update_cmd() {
   if [ -z "$update_error" ]; then
     activate_staged_file "$ENV_FILE" || update_error="candidate environment activation failed"
   fi
+  if [ -z "$update_error" ]; then
+    activated_image="$(
+      sudo_do sed -n 's/^SUBBOOST_IMAGE=//p' "$ENV_FILE" |
+        tail -n 1
+    )"
+
+    [ "$activated_image" = "$image" ] ||
+      update_error="candidate environment image activation did not persist"
+  fi
+
   if [ -z "$update_error" ]; then
     activate_staged_file "$COMPOSE_FILE" || update_error="candidate Compose activation failed"
   fi
