@@ -74,6 +74,7 @@ vi.mock(
   async (importOriginal) => mockJsxRuntime(await importOriginal<typeof import("react/jsx-runtime")>())
 );
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   ArrowRight: () => null,
   Check: () => null,
   Pencil: () => null,

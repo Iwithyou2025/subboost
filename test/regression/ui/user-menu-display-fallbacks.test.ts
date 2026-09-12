@@ -23,6 +23,7 @@ vi.mock("next/link", () => ({
   },
 }));
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   ChevronDown: (props: any) => React.createElement("span", { className: props.className }, "down"),
   LayoutDashboard: () => null,
   LogIn: () => null,

@@ -44,6 +44,7 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   LogOut: () => React.createElement("span", null, "logout"),
   Network: () => React.createElement("span", null, "network"),
   ServerCog: () => React.createElement("span", null, "server"),

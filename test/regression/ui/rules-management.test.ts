@@ -39,6 +39,7 @@ vi.mock("../../../node_modules/react/index.js", async (importOriginal) => {
   };
 });
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   ArrowDown: () => null,
   ArrowUp: () => null,
   ListOrdered: () => null,

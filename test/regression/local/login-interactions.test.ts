@@ -62,6 +62,7 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href, ...props }, children),
 }));
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   Loader2: () => React.createElement("span", null, "loading"),
 }));
 vi.mock("@subboost/ui/components/ui/button", () => ({

@@ -42,6 +42,7 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("lucide-react", () => ({
+  QrCode: () => null,
   ChevronDown: () => null,
   ChevronRight: () => null,
   RotateCcw: () => null,
