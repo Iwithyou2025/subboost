@@ -1,21 +1,27 @@
-# SubBoost v2.8.1
+# SubBoost v1.0.0
 
 ## 中文
 
+### 新增
+
+- 新增 YAML 规则集输出。
+- 新增 MRS / YAML 规则集切换。
+- YAML 规则集选择支持持久化。
+
 ### 修复
 
-- 修复自部署实例从旧版本更新时，首次执行 `subboost update` 可能已显示新版本配置、但应用仍运行旧镜像的问题。升级成功后现在会在一次更新中实际切换到新版本镜像。
-
-### 升级说明
-
-- 现有自部署用户可继续运行 `subboost update`。升级器仍会按原流程创建并验证数据库备份；本版本不需要新增环境变量或人工迁移。
+- 修复订阅链接复制按钮失效的问题。
+- 修复仪表盘链接与 YAML 规则集选择不一致的问题。
 
 ## English
 
+### Features
+
+- Added YAML rule-provider output.
+- Added MRS / YAML rule-provider switching.
+- Persisted YAML rule-provider preference.
+
 ### Fixes
 
-- Fixed an issue where the first `subboost update` from an older self-hosted version could activate new release metadata while the application continued running the old image. A successful update now switches the running application to the new image in a single update.
-
-### Upgrade Notes
-
-- Existing self-hosted users can continue to run `subboost update`. The updater still creates and verifies a database backup as before; this release requires no new environment variables or manual migration.
+- Fixed subscription link copy behavior.
+- Fixed dashboard link format consistency.

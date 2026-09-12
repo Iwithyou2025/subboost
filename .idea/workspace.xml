@@ -5,22 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="cf75a08e-9c19-4984-9493-ac61488d9068" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.github/workflows/dev-release.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/dev-release.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.github/workflows/release.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/release.yml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README-CN.md" beforeDir="false" afterPath="$PROJECT_DIR$/README-CN.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/local/app/api/releases/latest/route.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/local/app/api/releases/latest/route.test.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/local/app/api/releases/latest/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/local/app/api/releases/latest/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/local/scripts/install.sh" beforeDir="false" afterPath="$PROJECT_DIR$/local/scripts/install.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/local/scripts/selfhost-shell.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/local/scripts/selfhost-shell.test.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/local/scripts/subboost.sh" beforeDir="false" afterPath="$PROJECT_DIR$/local/scripts/subboost.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/local/src/components/local-header.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/local/src/components/local-header.test.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/packages/ui/src/components/layout/footer.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/packages/ui/src/components/layout/footer.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/packages/ui/src/components/layout/header.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/packages/ui/src/components/layout/header.test.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/packages/ui/src/components/layout/layout-components.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/packages/ui/src/components/layout/layout-components.test.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/selfhost-release-assets.cjs" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/selfhost-release-assets.cjs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/regression/tooling/selfhost-release-assets.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/test/regression/tooling/selfhost-release-assets.test.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -72,7 +57,7 @@
       <updated>1788543070072</updated>
       <workItem from="1788543071238" duration="3280000" />
       <workItem from="1788589492308" duration="7003000" />
-      <workItem from="1789183730155" duration="10685000" />
+      <workItem from="1789183730155" duration="11397000" />
     </task>
     <servers />
   </component>
