@@ -54,7 +54,7 @@ export function SubscriptionQrHoverButton({ subscriptionUrl }: Props) {
             aria-label="查看订阅二维码"
         >
           <QrCode className="h-4 w-4" />
-          <span className="hidden sm:inline">订阅二维码</span>
+          <span className="hidden sm:inline">查看二维码</span>
         </Button>
 
           <div className="invisible absolute bottom-full left-1/2 z-50 -translate-x-1/2 pb-2 opacity-0 transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">          <div className="w-max rounded-xl border border-white/10 bg-[#111318] p-3 shadow-2xl">
