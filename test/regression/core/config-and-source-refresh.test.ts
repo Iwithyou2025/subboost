@@ -67,6 +67,7 @@ describe("public core config and refresh branch coverage", () => {
         ],
         dialerProxyGroups: [
           { id: "select-chain", name: "Select Chain", type: "select", relayNodes: [123, " Relay "], targetNodes: [] },
+          { id: "fallback-chain", name: "Fallback Chain", type: "fallback", fallbackInterval: 180, relayNodes: [" Relay "], targetNodes: [] },
           { id: "disabled", name: "Disabled", type: "url-test", enabled: false },
         ],
         listenerPorts: { "": 1234, " Valid Listener ": 65535, bad: "7890" },
@@ -104,6 +105,7 @@ describe("public core config and refresh branch coverage", () => {
     });
     expect(options.dialerProxyGroups).toEqual([
       { id: "select-chain", name: "Select Chain", type: "select", relayNodes: ["Relay"], targetNodes: [] },
+      { id: "fallback-chain", name: "Fallback Chain", type: "fallback", fallbackInterval: 180, relayNodes: ["Relay"], targetNodes: [] },
       { id: "disabled", name: "Disabled", type: "url-test", relayNodes: [], targetNodes: [], enabled: false },
     ]);
     expect(options.customProxyGroups).toEqual(

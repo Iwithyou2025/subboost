@@ -540,15 +540,19 @@ export function ProxyGroupsCustomGroupsPanel({
             groupName={settingsGroup.name}
             groupType={settingsGroup.groupType}
             strategy={settingsGroup.strategy}
+            fallbackInterval={settingsGroup.advanced?.fallbackInterval}
             listenerTarget={target}
             listenerBinding={findGroupListenerBinding(groupListeners, target)}
             conflictState={listenerConflictState}
-            onSave={({ groupType, strategy, listener }) => {
+            onSave={({ groupType, strategy, fallbackInterval, listener }) => {
               updateCustomProxyGroup(settingsGroup.id, {
                 groupType: groupType as ProxyGroupGroupType,
                 ...(groupType === "load-balance"
                   ? { strategy: strategy ?? settingsGroup.strategy ?? DEFAULT_LOAD_BALANCE_STRATEGY }
                   : { strategy: undefined }),
+                ...(groupType === "fallback" && fallbackInterval
+                  ? { advanced: { ...(settingsGroup.advanced || {}), fallbackInterval } }
+                  : {}),
               });
               setGroupListener(
                 target,

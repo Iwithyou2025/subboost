@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   configToYaml,
   generateClashConfig,
+  generateDialerProxyGroups,
   generateProxyGroups,
   generateRules,
   generateRuleProviders,
@@ -53,9 +54,12 @@ describe("public core generator extra branch coverage", () => {
       ruleProviderBaseUrl: "https://rules.example/base",
       testUrl: "https://latency.example/generate_204",
       testInterval: 321,
+      proxyGroupAdvanced: {
+        private: { groupType: "fallback", fallbackInterval: 180 },
+      },
       customProxyGroups: [
         { id: "url", name: "URL Filter", emoji: "", groupType: "url-test", advanced: {} },
-        { id: "fallback", name: "Fallback Filter", emoji: "", groupType: "fallback", advanced: {} },
+        { id: "fallback", name: "Fallback Filter", emoji: "", groupType: "fallback", advanced: { fallbackInterval: 240 } },
         { id: "lb", name: "LB Filter", emoji: "", groupType: "load-balance", advanced: {} },
         { id: "direct", name: "Direct Filter", emoji: "", groupType: "direct-first", advanced: {} },
         { id: "reject", name: "Reject Filter", emoji: "", groupType: "reject-first", advanced: {} },
@@ -75,6 +79,33 @@ describe("public core generator extra branch coverage", () => {
     expect(groups.find((group) => group.name === "Custom URL")).toMatchObject({
       type: "url-test",
       use: ["remote-provider"],
+    });
+    expect(groups.find((group) => group.name === "Fallback Filter")).toMatchObject({
+      type: "fallback",
+      interval: 240,
+    });
+    expect(groups.find((group) => group.name.includes("私有网络"))).toMatchObject({
+      type: "fallback",
+      interval: 180,
+    });
+
+    const dialerGroups = generateDialerProxyGroups(
+      [
+        {
+          id: "relay",
+          name: "Relay Fallback",
+          type: "fallback",
+          fallbackInterval: 300,
+          relayNodes: ["Alpha"],
+          targetNodes: [],
+        },
+      ],
+      "https://latency.example/generate_204",
+      321,
+    );
+    expect(dialerGroups[0]).toMatchObject({
+      type: "fallback",
+      interval: 300,
     });
     expect(groups.find((group) => group.name === "LB Filter")).toMatchObject({
       type: "load-balance",

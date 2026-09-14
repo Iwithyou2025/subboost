@@ -11,6 +11,7 @@ import {
 } from "@subboost/core/rules/rule-model";
 import {
   DEFAULT_LOAD_BALANCE_STRATEGY,
+  isFallbackInterval,
   isProxyGroupGroupType,
   isLoadBalanceStrategy,
   type CustomProxyGroup,
@@ -433,6 +434,9 @@ function parseDialerProxyGroups(value: unknown): { ok: true; value: DialerProxyG
     if (!groupType.ok) return groupType;
     const strategy = parseOptionalLoadBalanceStrategy(item.strategy, "dialerProxyGroups.strategy");
     if (!strategy.ok) return strategy;
+    if (item.fallbackInterval !== undefined && !isFallbackInterval(item.fallbackInterval)) {
+      return invalid("dialerProxyGroups.fallbackInterval 无效");
+    }
     const relayNodes = parseStringArray(item.relayNodes, "dialerProxyGroups.relayNodes");
     if (!relayNodes.ok) return relayNodes;
     const targetNodes = parseStringArray(item.targetNodes, "dialerProxyGroups.targetNodes");
@@ -445,6 +449,9 @@ function parseDialerProxyGroups(value: unknown): { ok: true; value: DialerProxyG
       type: groupType.value,
       ...(groupType.value === "load-balance"
         ? { strategy: strategy.value ?? DEFAULT_LOAD_BALANCE_STRATEGY }
+        : {}),
+      ...(groupType.value === "fallback" && isFallbackInterval(item.fallbackInterval)
+        ? { fallbackInterval: item.fallbackInterval }
         : {}),
       relayNodes: relayNodes.value,
       targetNodes: targetNodes.value,

@@ -127,6 +127,7 @@ describe("proxy group generator", () => {
       proxyGroupAdvanced: {
         ai: {
           groupType: "fallback",
+          fallbackInterval: 180,
           extraMembers: [{ kind: "direct" }],
           memberOrder: [{ kind: "direct" }, { kind: "node", name: "Node B" }],
         },
@@ -137,7 +138,7 @@ describe("proxy group generator", () => {
       type: "fallback",
       proxies: ["DIRECT", "Node B", "Node A"],
       url: "https://probe.example.com/204",
-      interval: 120,
+      interval: 180,
     });
   });
 

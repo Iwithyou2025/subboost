@@ -157,6 +157,14 @@ describe("public core extra branch coverage", () => {
             relayNodes: [],
             targetNodes: [],
           },
+          {
+            id: "dialer-fallback",
+            name: "Dialer Fallback",
+            type: "fallback",
+            fallbackInterval: 300,
+            relayNodes: [],
+            targetNodes: [],
+          },
         ],
         builtinRuleEdits: {
           "module:cn:cn-ip": { target: "Custom Select" },
@@ -174,7 +182,10 @@ describe("public core extra branch coverage", () => {
             advanced: {},
           }),
         ]),
-        dialerProxyGroups: [expect.objectContaining({ type: "url-test" })],
+        dialerProxyGroups: [
+          expect.objectContaining({ type: "url-test" }),
+          expect.objectContaining({ type: "fallback", fallbackInterval: 300 }),
+        ],
       }),
     });
 
@@ -235,6 +246,7 @@ describe("public core extra branch coverage", () => {
     expectInvalid({ proxyGroupAdvanced: { missing: {} } }, "proxyGroupAdvanced 包含未知代理组");
 
     expectInvalid({ dialerProxyGroups: [{ id: "d", name: "Dialer", type: "bad", relayNodes: [], targetNodes: [] }] }, "dialerProxyGroups.type 无效");
+    expectInvalid({ dialerProxyGroups: [{ id: "d", name: "Dialer", type: "fallback", fallbackInterval: 90, relayNodes: [], targetNodes: [] }] }, "dialerProxyGroups.fallbackInterval 无效");
     expectInvalid({ dialerProxyGroups: [{ id: "d", name: "Dialer", type: "select", relayNodes: "bad", targetNodes: [] }] }, "dialerProxyGroups.relayNodes 必须是数组");
     expectInvalid({ dialerProxyGroups: [{ id: "d", name: "Dialer", type: "select", relayNodes: [], targetNodes: [123] }] }, "dialerProxyGroups.targetNodes 只能包含字符串");
     expectInvalid({ dialerProxyGroups: [{ id: "d", name: "Dialer", type: "select", relayNodes: [], targetNodes: [], enabled: "yes" }] }, "dialerProxyGroups.enabled 必须是布尔值");

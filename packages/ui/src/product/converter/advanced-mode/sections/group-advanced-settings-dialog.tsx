@@ -14,6 +14,7 @@ import { Input } from "@subboost/ui/components/ui/input";
 import { SwitchField } from "@subboost/ui/components/ui/switch-field";
 import {
   DEFAULT_LOAD_BALANCE_STRATEGY,
+  type FallbackInterval,
   type GroupListenerBinding,
   type GroupListenerTarget,
   type LoadBalanceStrategy,
@@ -28,6 +29,7 @@ import {
 export interface GroupAdvancedSettingsValue {
   groupType: ProxyGroupGroupType;
   strategy?: LoadBalanceStrategy;
+  fallbackInterval?: FallbackInterval;
   listener: { port: number; enabled: boolean; allowLan: boolean } | null;
 }
 
@@ -37,6 +39,7 @@ interface GroupAdvancedSettingsDialogProps {
   groupName: string;
   groupType: ProxyGroupGroupType;
   strategy?: LoadBalanceStrategy;
+  fallbackInterval?: FallbackInterval;
   listenerTarget: GroupListenerTarget;
   listenerBinding?: GroupListenerBinding;
   conflictState: GroupListenerConflictState;
@@ -53,6 +56,7 @@ export function GroupAdvancedSettingsDialog({
   groupName,
   groupType,
   strategy,
+  fallbackInterval,
   listenerTarget,
   listenerBinding,
   conflictState,
@@ -65,6 +69,7 @@ export function GroupAdvancedSettingsDialog({
   const [listenerOn, setListenerOn] = React.useState(false);
   const [portInput, setPortInput] = React.useState("");
   const [allowLan, setAllowLan] = React.useState(false);
+  const [draftFallbackInterval, setDraftFallbackInterval] = React.useState<FallbackInterval | undefined>(fallbackInterval);
 
   // 每次打开时从当前配置重建草稿，丢弃上次未保存的修改
   React.useEffect(() => {
@@ -74,7 +79,8 @@ export function GroupAdvancedSettingsDialog({
     setListenerOn(Boolean(listenerBinding && listenerBinding.enabled !== false));
     setPortInput(listenerBinding ? String(listenerBinding.port) : "");
     setAllowLan(listenerBinding?.allowLan === true);
-  }, [open, groupType, strategy, listenerBinding]);
+    setDraftFallbackInterval(fallbackInterval);
+  }, [open, groupType, strategy, fallbackInterval, listenerBinding]);
 
   // 开关关闭=暂停（保留配置不生成），端口只需格式合法、无需无冲突（与生成器一致）
   const portCheck = React.useMemo(
@@ -91,6 +97,7 @@ export function GroupAdvancedSettingsDialog({
     onSave({
       groupType: draftType,
       ...(draftType === "load-balance" ? { strategy: draftStrategy } : {}),
+      ...(draftType === "fallback" && draftFallbackInterval ? { fallbackInterval: draftFallbackInterval } : {}),
       listener: portRequired && portCheck.port !== null
         ? { port: portCheck.port, enabled: listenerOn, allowLan }
         : null,
@@ -110,10 +117,12 @@ export function GroupAdvancedSettingsDialog({
             <ProxyGroupTypeMenu
               value={draftType}
               strategy={draftStrategy}
+              fallbackInterval={draftFallbackInterval}
               showStrategyLabel
               onChange={(next) => {
                 setDraftType(next.groupType);
                 if (next.strategy) setDraftStrategy(next.strategy);
+                if (next.fallbackInterval) setDraftFallbackInterval(next.fallbackInterval);
               }}
             />
           </FormField>

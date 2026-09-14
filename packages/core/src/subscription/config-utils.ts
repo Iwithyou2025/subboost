@@ -4,6 +4,7 @@ import type { DialerProxyGroup } from "@subboost/core/types/template-config";
 import type { ParsedNode } from "@subboost/core/types/node";
 import {
   DEFAULT_LOAD_BALANCE_STRATEGY,
+  isFallbackInterval,
   isLoadBalanceStrategy,
   isProxyGroupGroupType,
   type CustomProxyGroup,
@@ -184,6 +185,7 @@ function normalizeDialerProxyGroups(value: unknown): DialerProxyGroup[] {
     const type = isProxyGroupGroupType(item.type) ? item.type : null;
     if (!id || !name || !type) continue;
     const strategy = isLoadBalanceStrategy(item.strategy) ? item.strategy : undefined;
+    const fallbackInterval = isFallbackInterval(item.fallbackInterval) ? item.fallbackInterval : undefined;
 
     const enabled = typeof item.enabled === "boolean" ? item.enabled : undefined;
     const relayNodes = normalizeStringArray(item.relayNodes);
@@ -194,6 +196,7 @@ function normalizeDialerProxyGroups(value: unknown): DialerProxyGroup[] {
       name,
       type,
       ...(type === "load-balance" ? { strategy: strategy ?? DEFAULT_LOAD_BALANCE_STRATEGY } : {}),
+      ...(type === "fallback" && fallbackInterval ? { fallbackInterval } : {}),
       relayNodes,
       targetNodes,
       ...(enabled !== undefined ? { enabled } : {}),

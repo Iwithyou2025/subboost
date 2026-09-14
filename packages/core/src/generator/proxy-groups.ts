@@ -230,14 +230,15 @@ export function generateProxyGroups(options: ProxyGroupGenerateOptions): ProxyGr
     groupType: ProxyGroupGroupType,
     proxies: string[],
     strategy?: LoadBalanceStrategy,
-    extraFields: Record<string, unknown> = providerUse
+    extraFields: Record<string, unknown> = providerUse,
+    interval: number = testInterval
   ): ProxyGroup =>
     buildTypedProxyGroup({
       name,
       groupType,
       proxies,
       testUrl,
-      testInterval,
+      testInterval: interval,
       strategy,
       extraFields,
       urlTestLazy: false,
@@ -304,6 +305,9 @@ export function generateProxyGroups(options: ProxyGroupGenerateOptions): ProxyGr
             id: module.id,
             name: moduleName,
           }),
+          undefined,
+          providerUse,
+          advanced?.fallbackInterval ?? testInterval,
         ));
         break;
 
@@ -372,7 +376,14 @@ export function generateProxyGroups(options: ProxyGroupGenerateOptions): ProxyGr
 
     if (usesFilteredNodeMembers(customGroup)) {
       if (customGroup.groupType === "url-test" || customGroup.groupType === "fallback") {
-        return createGeneratedProxyGroup(customGroup.name, customGroup.groupType, resolveCustom(filteredNodeNames), undefined, {});
+        return createGeneratedProxyGroup(
+          customGroup.name,
+          customGroup.groupType,
+          resolveCustom(filteredNodeNames),
+          undefined,
+          {},
+          customGroup.groupType === "fallback" ? customGroup.advanced?.fallbackInterval ?? testInterval : testInterval,
+        );
       }
       if (customGroup.groupType === "load-balance") {
         return createGeneratedProxyGroup(
@@ -395,7 +406,14 @@ export function generateProxyGroups(options: ProxyGroupGenerateOptions): ProxyGr
       return createGeneratedProxyGroup(customGroup.name, customGroup.groupType, resolveCustom(filteredNodeNames));
     }
     if (customGroup.groupType === "fallback") {
-      return createGeneratedProxyGroup(customGroup.name, customGroup.groupType, resolveCustom(filteredNodeNames));
+      return createGeneratedProxyGroup(
+        customGroup.name,
+        customGroup.groupType,
+        resolveCustom(filteredNodeNames),
+        undefined,
+        providerUse,
+        customGroup.advanced?.fallbackInterval ?? testInterval,
+      );
     }
     if (customGroup.groupType === "load-balance") {
       return createGeneratedProxyGroup(

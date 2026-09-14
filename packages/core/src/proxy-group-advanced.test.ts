@@ -40,6 +40,7 @@ describe("resolveProxyGroupMembers", () => {
         excludeRegex: " 测试 ",
         groupType: "load-balance",
         strategy: "bad",
+        fallbackInterval: 180,
         extraMembers: [{ kind: "direct" }, { kind: "direct" }, { kind: "node", name: "Node A" }],
         excludedMembers: [{ kind: "reject" }, { kind: "node", name: "" }],
         memberOrder: [{ kind: "node", name: "Node A" }, { kind: "node", name: "Node A" }],
@@ -51,6 +52,7 @@ describe("resolveProxyGroupMembers", () => {
       excludeRegex: "测试",
       groupType: "load-balance",
       strategy: "consistent-hashing",
+      fallbackInterval: 180,
       extraMembers: [{ kind: "direct" }, { kind: "node", name: "Node A" }],
       excludedMembers: [{ kind: "reject" }],
       memberOrder: [{ kind: "node", name: "Node A" }],
@@ -62,7 +64,13 @@ describe("resolveProxyGroupMembers", () => {
     });
     expect(normalizeProxyGroupAdvancedConfig([])).toEqual({});
     expect(normalizeProxyGroupAdvancedConfig({ groupType: "url-test" })).toEqual({ groupType: "url-test" });
-    expect(normalizeProxyGroupAdvancedConfig({ groupType: "fallback" })).toEqual({ groupType: "fallback" });
+    expect(normalizeProxyGroupAdvancedConfig({ groupType: "fallback", fallbackInterval: 60 })).toEqual({
+      groupType: "fallback",
+      fallbackInterval: 60,
+    });
+    expect(normalizeProxyGroupAdvancedConfig({ groupType: "fallback", fallbackInterval: 90 })).toEqual({
+      groupType: "fallback",
+    });
     expect(normalizeProxyGroupAdvancedConfig({ groupType: "direct-first" })).toEqual({ groupType: "direct-first" });
     expect(normalizeProxyGroupAdvancedConfig({ groupType: "reject-first" })).toEqual({ groupType: "reject-first" });
     expect(normalizeProxyGroupAdvancedConfig({ groupType: "unknown" })).toEqual({});

@@ -266,6 +266,7 @@ describe("UI component coverage: group advanced settings dialog", () => {
     const result = renderAdvancedDialog({}, {
       groupType: "load-balance",
       strategy: "round-robin",
+      fallbackInterval: 180,
       listenerBinding,
     }, true);
 
@@ -274,6 +275,7 @@ describe("UI component coverage: group advanced settings dialog", () => {
     expect(result.setters[2]).toHaveBeenCalledWith(true);
     expect(result.setters[3]).toHaveBeenCalledWith("9010");
     expect(result.setters[4]).toHaveBeenCalledWith(true);
+    expect(result.setters[5]).toHaveBeenCalledWith(180);
   });
 
   it("uses default drafts without a binding and ignores a missing type-menu strategy", () => {
@@ -286,13 +288,17 @@ describe("UI component coverage: group advanced settings dialog", () => {
     mocks.captures.typeMenu.onChange({ groupType: "url-test" });
     expect(result.setters[0]).toHaveBeenCalledWith("url-test");
     expect(result.setters[1]).toHaveBeenCalledTimes(1);
+
+    mocks.captures.typeMenu.onChange({ groupType: "fallback", fallbackInterval: 120 });
+    expect(result.setters[0]).toHaveBeenCalledWith("fallback");
+    expect(result.setters[5]).toHaveBeenCalledWith(120);
   });
 
-  it("saves a non-load-balance group without a listener", () => {
-    const result = renderAdvancedDialog({ 0: "fallback", 2: false, 3: "" });
+  it("saves a fallback group with its detection interval and no listener", () => {
+    const result = renderAdvancedDialog({ 0: "fallback", 2: false, 3: "", 5: 120 });
     const save = mocks.captures.buttons.find((button: any) => button.children === "保存");
     save.onClick();
-    expect(result.onSave).toHaveBeenCalledWith({ groupType: "fallback", listener: null });
+    expect(result.onSave).toHaveBeenCalledWith({ groupType: "fallback", fallbackInterval: 120, listener: null });
     expect(result.onOpenChange).toHaveBeenCalledWith(false);
   });
 });

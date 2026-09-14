@@ -53,6 +53,7 @@ vi.mock("@subboost/ui/lib/utils", () => ({
 
 import {
   ProxyGroupTypeMenu,
+  getFallbackIntervalLabel,
   getLoadBalanceStrategyLabel,
   getProxyGroupTypeLabel,
 } from "./proxy-group-type-menu";
@@ -77,6 +78,8 @@ describe("ProxyGroupTypeMenu", () => {
     expect(getLoadBalanceStrategyLabel("round-robin")).toBe("轮询均摊");
     expect(getLoadBalanceStrategyLabel("sticky-sessions")).toBe("会话保持");
     expect(getLoadBalanceStrategyLabel("consistent-hashing")).toBe("稳定分配");
+    expect(getFallbackIntervalLabel(60)).toBe("1min");
+    expect(getFallbackIntervalLabel(300)).toBe("5min");
   });
 
   it("renders default trigger, selected marks, and dispatches all menu choices", () => {
@@ -103,17 +106,36 @@ describe("ProxyGroupTypeMenu", () => {
 
     captures.items.find((props) => props.children[1].props.children === "手动选择").onSelect();
     captures.items.find((props) => props.children[1].props.children === "自动测速").onSelect();
-    captures.items.find((props) => props.children[1].props.children === "故障切换").onSelect();
+    captures.items.find((props) => props.children[1].props.children === "2min").onSelect();
     captures.items.find((props) => props.children[1].props.children === "直连优先").onSelect();
     captures.items.find((props) => props.children[1].props.children === "拦截优先").onSelect();
     captures.items.find((props) => props.children[1].props.children === "会话保持").onSelect();
 
     expect(onChange).toHaveBeenCalledWith({ groupType: "select" });
     expect(onChange).toHaveBeenCalledWith({ groupType: "url-test" });
-    expect(onChange).toHaveBeenCalledWith({ groupType: "fallback" });
+    expect(onChange).toHaveBeenCalledWith({ groupType: "fallback", fallbackInterval: 120 });
     expect(onChange).toHaveBeenCalledWith({ groupType: "direct-first" });
     expect(onChange).toHaveBeenCalledWith({ groupType: "reject-first" });
     expect(onChange).toHaveBeenCalledWith({ groupType: "load-balance", strategy: "sticky-sessions" });
+  });
+
+  it("renders fallback intervals in a submenu and shows the selected interval", () => {
+    const onChange = vi.fn();
+    const html = renderToStaticMarkup(
+      React.createElement(ProxyGroupTypeMenu, {
+        value: "fallback",
+        fallbackInterval: 180,
+        showStrategyLabel: true,
+        onChange,
+      })
+    );
+
+    expect(html).toContain("故障切换 / 3min");
+    for (const label of ["1min", "2min", "3min", "4min", "5min"]) {
+      expect(html).toContain(label);
+    }
+    captures.items.find((props) => props.children[1].props.children === "5min").onSelect();
+    expect(onChange).toHaveBeenCalledWith({ groupType: "fallback", fallbackInterval: 300 });
   });
 
   it("uses a custom trigger and falls back to the default load-balance strategy", () => {

@@ -84,7 +84,7 @@ const CONFLICT_STATE = {
   groupListeners: [{ id: "gl-other", target: { kind: "custom" as const, id: "c1" }, port: 9300 }],
 };
 
-// state 索引：0=draftType 1=draftStrategy 2=listenerOn 3=portInput 4=allowLan
+// state 索引：0=draftType 1=draftStrategy 2=listenerOn 3=portInput 4=allowLan 5=draftFallbackInterval
 function renderDialog(overrides: Record<number, unknown> = {}, props: Record<string, unknown> = {}) {
   stateMock.enabled = true;
   stateMock.callIndex = 0;
@@ -129,6 +129,7 @@ describe("GroupAdvancedSettingsDialog", () => {
       expect.objectContaining({
         value: "select",
         strategy: "consistent-hashing",
+        fallbackInterval: undefined,
         showStrategyLabel: true,
       })
     );
@@ -139,6 +140,18 @@ describe("GroupAdvancedSettingsDialog", () => {
     });
     expect(stateMock.setters[0]).toHaveBeenCalledWith("load-balance");
     expect(stateMock.setters[1]).toHaveBeenCalledWith("round-robin");
+  });
+
+  it("saves the selected fallback detection interval", () => {
+    const onSave = vi.fn();
+    renderDialog({ 0: "fallback", 5: 240 }, { onSave });
+
+    mocks.captures.buttons.find((props: any) => props.children === "保存").onClick();
+    expect(onSave).toHaveBeenCalledWith({
+      groupType: "fallback",
+      fallbackInterval: 240,
+      listener: null,
+    });
   });
 
   it("delegates field spacing to the shared FormField default", () => {

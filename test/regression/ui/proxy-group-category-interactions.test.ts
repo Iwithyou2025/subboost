@@ -236,14 +236,16 @@ describe("UI component coverage: proxy-group categories", () => {
       null,
     );
 
-    mocks.store.proxyGroupAdvanced = { [proxyModule.id]: { groupType: "fallback", strategy: "round-robin" } };
+    mocks.store.proxyGroupAdvanced = { [proxyModule.id]: { groupType: "fallback", strategy: "round-robin", fallbackInterval: 180 } };
     result = renderCategories({ 4: proxyModule.id });
     dialog = result.settingsDialogs[0];
     expect(dialog.groupType).toBe("fallback");
-    dialog.onSave({ groupType: "fallback", strategy: "round-robin", listener: { port: 9001, enabled: false, allowLan: true } });
+    expect(dialog.fallbackInterval).toBe(180);
+    dialog.onSave({ groupType: "fallback", fallbackInterval: 240, listener: { port: 9001, enabled: false, allowLan: true } });
     expect(mocks.store.updateProxyGroupAdvanced).toHaveBeenCalledWith(proxyModule.id, {
       groupType: "fallback",
       strategy: undefined,
+      fallbackInterval: 240,
     });
     expect(mocks.store.setGroupListener).toHaveBeenCalledWith(
       { kind: "module", id: proxyModule.id },

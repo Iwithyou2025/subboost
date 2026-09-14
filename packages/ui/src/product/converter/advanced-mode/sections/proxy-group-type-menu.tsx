@@ -15,7 +15,9 @@ import {
 import { cn } from "@subboost/ui/lib/utils";
 import {
   DEFAULT_LOAD_BALANCE_STRATEGY,
+  FALLBACK_INTERVALS,
   LOAD_BALANCE_STRATEGIES,
+  type FallbackInterval,
   type LoadBalanceStrategy,
 } from "@subboost/core/types/config";
 
@@ -30,11 +32,13 @@ export type ProxyGroupTypeMenuValue =
 type ProxyGroupTypeMenuChange = {
   groupType: ProxyGroupTypeMenuValue;
   strategy?: LoadBalanceStrategy;
+  fallbackInterval?: FallbackInterval;
 };
 
 type ProxyGroupTypeMenuProps = {
   value?: ProxyGroupTypeMenuValue;
   strategy?: LoadBalanceStrategy;
+  fallbackInterval?: FallbackInterval;
   onChange: (next: ProxyGroupTypeMenuChange) => void;
   triggerClassName?: string;
   contentClassName?: string;
@@ -85,9 +89,14 @@ export function getLoadBalanceStrategyLabel(strategy: LoadBalanceStrategy) {
   }
 }
 
+export function getFallbackIntervalLabel(interval: FallbackInterval) {
+  return `${interval / 60}min`;
+}
+
 export function ProxyGroupTypeMenu({
   value = "select",
   strategy,
+  fallbackInterval,
   onChange,
   triggerClassName,
   contentClassName,
@@ -99,7 +108,9 @@ export function ProxyGroupTypeMenu({
   const triggerLabel =
     showStrategyLabel && value === "load-balance"
       ? `${getProxyGroupTypeLabel(value)} / ${getLoadBalanceStrategyLabel(selectedStrategy)}`
-      : getProxyGroupTypeLabel(value);
+      : showStrategyLabel && value === "fallback" && fallbackInterval
+        ? `${getProxyGroupTypeLabel(value)} / ${getFallbackIntervalLabel(fallbackInterval)}`
+        : getProxyGroupTypeLabel(value);
 
   return (
     <DropdownMenu>
@@ -120,7 +131,7 @@ export function ProxyGroupTypeMenu({
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent className={cn(menuContentClassName, contentClassName)} align={contentAlign}>
-        {NORMAL_TYPE_OPTIONS.slice(0, 3).map((option) => (
+        {NORMAL_TYPE_OPTIONS.slice(0, 2).map((option) => (
           <DropdownMenuItem
             key={option.value}
             className={menuItemClassName}
@@ -130,6 +141,25 @@ export function ProxyGroupTypeMenu({
             <span>{option.label}</span>
           </DropdownMenuItem>
         ))}
+
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className={cn(menuItemClassName, "cursor-default")}>
+            <SelectionMark selected={value === "fallback"} />
+            <span>故障切换</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className={menuContentClassName} sideOffset={4}>
+            {FALLBACK_INTERVALS.map((interval) => (
+              <DropdownMenuItem
+                key={interval}
+                className={menuItemClassName}
+                onSelect={() => onChange({ groupType: "fallback", fallbackInterval: interval })}
+              >
+                <SelectionMark selected={value === "fallback" && fallbackInterval === interval} />
+                <span>{getFallbackIntervalLabel(interval)}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className={cn(menuItemClassName, "cursor-default")}>

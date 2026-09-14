@@ -3,6 +3,7 @@ import type {
   CustomProxyGroup,
   CustomRule,
   CustomRuleSet,
+  FallbackInterval,
   LoadBalanceStrategy,
   ProxyGroupAdvancedConfig,
   ProxyGroupGroupType,
@@ -17,6 +18,7 @@ export interface DialerProxyGroup {
   relayNodes: string[]; // 用于中转的节点名称列表
   type: ProxyGroupGroupType; // 组类型
   strategy?: LoadBalanceStrategy; // 负载均衡策略，仅 type=load-balance 时生效
+  fallbackInterval?: FallbackInterval; // 故障检测间隔，仅 type=fallback 时生效
   targetNodes: string[]; // 使用此中转的落地节点名称列表
 }
 

@@ -8,6 +8,13 @@ export const LOAD_BALANCE_STRATEGIES = ["consistent-hashing", "round-robin", "st
 export type LoadBalanceStrategy = (typeof LOAD_BALANCE_STRATEGIES)[number];
 export const DEFAULT_LOAD_BALANCE_STRATEGY: LoadBalanceStrategy = "consistent-hashing";
 
+export const FALLBACK_INTERVALS = [60, 120, 180, 240, 300] as const;
+export type FallbackInterval = (typeof FALLBACK_INTERVALS)[number];
+
+export function isFallbackInterval(value: unknown): value is FallbackInterval {
+  return typeof value === "number" && (FALLBACK_INTERVALS as readonly number[]).includes(value);
+}
+
 export function isLoadBalanceStrategy(value: unknown): value is LoadBalanceStrategy {
   return typeof value === "string" && (LOAD_BALANCE_STRATEGIES as readonly string[]).includes(value);
 }
@@ -268,6 +275,7 @@ export interface ProxyGroupAdvancedConfig {
   excludeRegex?: string;
   groupType?: ProxyGroupGroupType;
   strategy?: LoadBalanceStrategy;
+  fallbackInterval?: FallbackInterval;
   extraMembers?: ProxyGroupMemberRef[];
   excludedMembers?: ProxyGroupMemberRef[];
   memberOrder?: ProxyGroupMemberRef[];

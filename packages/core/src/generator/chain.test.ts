@@ -47,6 +47,7 @@ describe("dialer proxy chain helpers", () => {
             id: "fallback-relay",
             name: "Fallback Relay",
             type: "fallback",
+            fallbackInterval: 240,
             relayNodes: ["Relay C"],
           }),
           dialerGroup({
@@ -102,7 +103,7 @@ describe("dialer proxy chain helpers", () => {
         proxies: ["Relay C"],
         use: ["provider-a", "provider-b"],
         url: "https://probe.example.com/204",
-        interval: 120,
+        interval: 240,
       },
       {
         name: "Balance Relay",

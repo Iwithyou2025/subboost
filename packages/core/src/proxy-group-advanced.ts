@@ -1,6 +1,7 @@
 import { getNodeSourceIds } from "@subboost/core/subscription/node-source-state";
 import {
   DEFAULT_LOAD_BALANCE_STRATEGY,
+  isFallbackInterval,
   isLoadBalanceStrategy,
 } from "@subboost/core/types/config";
 import type {
@@ -179,6 +180,7 @@ export function normalizeProxyGroupAdvancedConfig(value: unknown): ProxyGroupAdv
     : groupType === "load-balance"
       ? DEFAULT_LOAD_BALANCE_STRATEGY
       : undefined;
+  const fallbackInterval = isFallbackInterval(item.fallbackInterval) ? item.fallbackInterval : undefined;
   const extraMembers = normalizeMemberList(item.extraMembers);
   const excludedMembers = normalizeMemberList(item.excludedMembers);
   const memberOrder = normalizeMemberList(item.memberOrder);
@@ -189,6 +191,7 @@ export function normalizeProxyGroupAdvancedConfig(value: unknown): ProxyGroupAdv
     ...(excludeRegex ? { excludeRegex } : {}),
     ...(groupType ? { groupType } : {}),
     ...(strategy ? { strategy } : {}),
+    ...(fallbackInterval ? { fallbackInterval } : {}),
     ...(extraMembers.length > 0 ? { extraMembers } : {}),
     ...(excludedMembers.length > 0 ? { excludedMembers } : {}),
     ...(memberOrder.length > 0 ? { memberOrder } : {}),

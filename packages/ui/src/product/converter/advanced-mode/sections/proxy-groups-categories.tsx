@@ -672,15 +672,17 @@ export function ProxyGroupsCategories() {
             groupName={resolveModuleDisplayName(settingsModule).full}
             groupType={(advancedConfig.groupType ?? settingsModule.groupType) as ProxyGroupGroupType}
             strategy={advancedConfig.strategy}
+            fallbackInterval={advancedConfig.fallbackInterval}
             listenerTarget={target}
             listenerBinding={findGroupListenerBinding(groupListeners, target)}
             conflictState={listenerConflictState}
-            onSave={({ groupType, strategy, listener }) => {
+            onSave={({ groupType, strategy, fallbackInterval, listener }) => {
               updateProxyGroupAdvanced(settingsModule.id, {
                 groupType,
                 ...(groupType === "load-balance"
                   ? { strategy: strategy ?? DEFAULT_LOAD_BALANCE_STRATEGY }
                   : { strategy: undefined }),
+                ...(groupType === "fallback" && fallbackInterval ? { fallbackInterval } : {}),
               });
               setGroupListener(
                 target,
