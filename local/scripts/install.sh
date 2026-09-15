@@ -665,6 +665,12 @@ main() {
   ENV_FILE="$live_env"
   COMPOSE_FILE="$live_compose"
 
+  if command -v systemctl >/dev/null 2>&1; then
+    if ! run_root env SUBBOOST_HOME="$SUBBOOST_HOME" SUBBOOST_BIN="$SUBBOOST_BIN" "$SUBBOOST_BIN" agent-install >/dev/null 2>&1; then
+      warn "网页备份管理服务未能自动启动；稍后可运行 'sudo subboost agent-install'。"
+    fi
+  fi
+
   say ""
   say "SubBoost 已启动。"
   say "访问地址: $(env_value APP_URL)"

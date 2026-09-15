@@ -678,4 +678,348 @@ ENV
       expect(result.stdout).toContain("unsafe_files=0 unsafe_dirs=0");
     }
   });
+
+  it("restores a backup while preserving current deployment and session secrets", () => {
+    const script = `
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      mkdir -p "$home/backups"
+      cat > "$home/.env" <<'ENV'
+SUBBOOST_IMAGE=current-image
+SUBBOOST_CANDIDATE_IMAGE=current-image
+SUBBOOST_RELEASE_URL=https://example.test/latest/release.json
+POSTGRES_DB=subboost
+POSTGRES_USER=subboost
+POSTGRES_PASSWORD=current-password
+DATABASE_URL=postgresql://subboost:current-password@db:5432/subboost?schema=public
+ENCRYPTION_KEY=current-encryption-key-123456
+JWT_SECRET=current-jwt-secret-123456
+CRON_SECRET=current-cron-secret-123456
+APP_URL=http://127.0.0.1:31000
+SUBBOOST_PORT=31000
+ENV
+      : > "$home/docker-compose.yml"
+      printf 'backup-dump' > "$home/backup.dump"
+      cat > "$home/backup.env" <<'ENV'
+SUBBOOST_IMAGE=old-image
+POSTGRES_PASSWORD=old-password
+ENCRYPTION_KEY=backup-encryption-key-123456
+JWT_SECRET=old-jwt-secret-123456
+CRON_SECRET=old-cron-secret-123456
+ENV
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      export SUBBOOST_DOCTOR_HEALTH_ATTEMPTS=1
+      export SUBBOOST_DOCTOR_HEALTH_INTERVAL_SECONDS=0
+      source local/scripts/subboost.sh
+      sudo_do() { "$@"; }
+      docker() {
+        if [ "$1" = "info" ]; then return 0; fi
+        if [ "$1" = "compose" ]; then
+          case "$*" in
+            *"pg_dump -Fc"*) printf 'safety-dump'; return 0 ;;
+            *"pg_restore --list"*) cat >/dev/null; return 0 ;;
+            *"psql -v ON_ERROR_STOP=1"*) printf 'schema-reset\\n' >> "$home/docker-log"; return 0 ;;
+            *"pg_restore --clean"*) cat >/dev/null; printf 'restore-clean\\n' >> "$home/docker-log"; return 0 ;;
+            *" up -d --no-deps --force-recreate app") printf 'candidate-key=%s\\n' "$ENCRYPTION_KEY" >> "$home/docker-log"; return 0 ;;
+            *" ps -q app") printf 'app-id\\n'; return 0 ;;
+            *" ps -q db") printf 'db-id\\n'; return 0 ;;
+            *" ps -q cron") printf 'cron-id\\n'; return 0 ;;
+            *) return 0 ;;
+          esac
+        fi
+        if [ "$1" = "inspect" ]; then
+          case "$*" in
+            *".State.Status"*) printf 'running\\n'; return 0 ;;
+            *".State.Health"*) printf 'healthy\\n'; return 0 ;;
+          esac
+        fi
+        return 0
+      }
+      curl() { return 0; }
+      : > "$home/docker-log"
+      restore_cmd "$home/backup.dump" "$home/backup.env"
+      cat "$home/.env"
+      cat "$home/docker-log"
+    `;
+
+    const result = runBash(script);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Restore completed successfully.");
+    expect(result.stdout).toContain("ENCRYPTION_KEY=backup-encryption-key-123456");
+    expect(result.stdout).toContain("SUBBOOST_IMAGE=current-image");
+    expect(result.stdout).toContain("POSTGRES_PASSWORD=current-password");
+    expect(result.stdout).toContain("JWT_SECRET=current-jwt-secret-123456");
+    expect(result.stdout).toContain("CRON_SECRET=current-cron-secret-123456");
+    expect(result.stdout).not.toContain("SUBBOOST_IMAGE=old-image");
+    expect(result.stdout).toContain("schema-reset");
+    expect(result.stdout).toContain("restore-clean");
+    expect(result.stdout).toContain("candidate-key=backup-encryption-key-123456");
+  });
+
+  it("rolls back the database and environment when a restored app fails health checks", () => {
+    const script = `
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      mkdir -p "$home/backups"
+      cat > "$home/.env" <<'ENV'
+SUBBOOST_IMAGE=current-image
+POSTGRES_DB=subboost
+POSTGRES_USER=subboost
+POSTGRES_PASSWORD=current-password
+DATABASE_URL=postgresql://subboost:current-password@db:5432/subboost?schema=public
+ENCRYPTION_KEY=current-encryption-key-123456
+JWT_SECRET=current-jwt-secret-123456
+CRON_SECRET=current-cron-secret-123456
+APP_URL=http://127.0.0.1:31000
+SUBBOOST_PORT=31000
+ENV
+      : > "$home/docker-compose.yml"
+      printf 'backup-dump' > "$home/backup.dump"
+      printf 'ENCRYPTION_KEY=backup-encryption-key-123456\\n' > "$home/backup.env"
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      export SUBBOOST_DOCTOR_HEALTH_ATTEMPTS=1
+      export SUBBOOST_DOCTOR_HEALTH_INTERVAL_SECONDS=0
+      source local/scripts/subboost.sh
+      sudo_do() { "$@"; }
+      printf '0\n' > "$home/restore-count"
+      docker() {
+        if [ "$1" = "info" ]; then return 0; fi
+        if [ "$1" = "compose" ]; then
+          case "$*" in
+            *"pg_dump -Fc"*) printf 'safety-dump'; return 0 ;;
+            *"pg_restore --list"*) cat >/dev/null; return 0 ;;
+            *"pg_restore --clean"*)
+              cat >/dev/null
+              restore_count="$(cat "$home/restore-count")"
+              restore_count=$((restore_count + 1))
+              printf '%s\\n' "$restore_count" > "$home/restore-count"
+              return 0
+              ;;
+            *) return 0 ;;
+          esac
+        fi
+        return 0
+      }
+      printf '0\\n' > "$home/health-count"
+      curl() {
+        count="$(cat "$home/health-count")"
+        count=$((count + 1))
+        printf '%s\\n' "$count" > "$home/health-count"
+        if [ "$count" -le 1 ]; then return 1; fi
+        return 0
+      }
+      set +e
+      output="$(restore_cmd "$home/backup.dump" "$home/backup.env" 2>&1)"
+      status=$?
+      set -e
+      printf 'status=%s\\n%s\\n' "$status" "$output"
+      cat "$home/.env"
+      cat "$home/restore-count"
+      [ "$status" -ne 0 ]
+    `;
+
+    const result = runBash(script);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Restore failed: health check failed");
+    expect(result.stdout).toContain("Previous data and environment restored successfully.");
+    expect(result.stdout).toContain("ENCRYPTION_KEY=current-encryption-key-123456");
+    expect(result.stdout).toMatch(/\n2\n/);
+  });
+
+  it("pauses writers before the safety snapshot and resumes services when that snapshot fails", () => {
+    const script = `
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      mkdir -p "$home/backups"
+      cat > "$home/.env" <<'ENV'
+SUBBOOST_IMAGE=current-image
+POSTGRES_DB=subboost
+POSTGRES_USER=subboost
+POSTGRES_PASSWORD=current-password
+DATABASE_URL=postgresql://subboost:current-password@db:5432/subboost?schema=public
+ENCRYPTION_KEY=current-encryption-key-123456
+JWT_SECRET=current-jwt-secret-123456
+CRON_SECRET=current-cron-secret-123456
+APP_URL=http://127.0.0.1:31000
+SUBBOOST_PORT=31000
+ENV
+      : > "$home/docker-compose.yml"
+      printf 'backup-dump' > "$home/backup.dump"
+      printf 'ENCRYPTION_KEY=backup-encryption-key-123456\\n' > "$home/backup.env"
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      export SUBBOOST_DOCTOR_HEALTH_ATTEMPTS=1
+      export SUBBOOST_DOCTOR_HEALTH_INTERVAL_SECONDS=0
+      source local/scripts/subboost.sh
+      sudo_do() { "$@"; }
+      docker() {
+        if [ "$1" = "info" ]; then return 0; fi
+        if [ "$1" = "compose" ]; then
+          case "$*" in
+            *" stop cron app") printf 'stop\\n' >> "$home/order"; return 0 ;;
+            *"pg_dump -Fc"*) printf 'pgdump\\n' >> "$home/order"; return 1 ;;
+            *"pg_restore --list"*) cat >/dev/null; return 0 ;;
+            *" up -d app") printf 'resume-app\\n' >> "$home/order"; return 0 ;;
+            *" up -d --no-deps --force-recreate cron") printf 'resume-cron\\n' >> "$home/order"; return 0 ;;
+            *) return 0 ;;
+          esac
+        fi
+        return 0
+      }
+      curl() { return 0; }
+      : > "$home/order"
+      set +e
+      output="$(restore_cmd "$home/backup.dump" "$home/backup.env" 2>&1)"
+      status=$?
+      set -e
+      printf 'status=%s\\n%s\\n' "$status" "$output"
+      cat "$home/order"
+      [ "$status" -ne 0 ]
+      [ "$(sed -n '1p' "$home/order")" = "stop" ]
+      [ "$(sed -n '2p' "$home/order")" = "pgdump" ]
+      grep -Fxq resume-app "$home/order"
+      grep -Fxq resume-cron "$home/order"
+      grep -q '^ENCRYPTION_KEY=current-encryption-key-123456$' "$home/.env"
+    `;
+
+    const result = runBash(script);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Restore aborted because the safety database backup failed.");
+    expect(result.stdout).toContain("stop\npgdump\nresume-app\nresume-cron");
+  });
+
+  it("rejects unsafe encryption keys from uploaded backup environments", () => {
+    const script = `
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      cat > "$home/.env" <<'ENV'
+ENCRYPTION_KEY=current-encryption-key-123456
+ENV
+      printf 'ENCRYPTION_KEY=$(touch /tmp/should-not-run)\\n' > "$home/backup.env"
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      source local/scripts/subboost.sh
+      sudo_do() { "$@"; }
+      set +e
+      output="$(build_restore_env "$home/backup.env" "$home/candidate.env" 2>&1)"
+      status=$?
+      set -e
+      printf 'status=%s\\n%s\\n' "$status" "$output"
+      [ "$status" -ne 0 ]
+    `;
+
+    const result = runBash(script);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Backup ENCRYPTION_KEY contains unsupported characters.");
+  });
+
+  it("creates and safely extracts ZIP backup bundles", () => {
+    const script = `
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      source local/scripts/subboost.sh
+      mkdir -p "$home/source" "$home/out"
+      printf 'dump' > "$home/source/subboost-test.dump"
+      printf 'ENCRYPTION_KEY=backup-encryption-key-123456\\n' > "$home/source/subboost-test.env"
+      write_backup_manifest "$home/source/manifest.json" subboost-test.dump subboost-test.env
+      create_zip_from_directory "$home/source" "$home/backup.zip" subboost-test.dump subboost-test.env manifest.json
+      extract_backup_zip "$home/backup.zip" "$home/out"
+      printf 'dump=%s env=%s\\n' "$(basename "$RESTORE_DUMP")" "$(basename "$RESTORE_ENV")"
+      [ "$(cat "$RESTORE_DUMP")" = "dump" ]
+    `;
+
+    const result = runBash(script);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("dump=subboost-test.dump env=subboost-test.env");
+  });
+
+  it("processes web export and restore jobs without accepting arbitrary paths", () => {
+    const script = `
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      source local/scripts/subboost.sh
+      sudo_do() { "$@"; }
+      TMP_DIR="$home/agent-tmp"
+      data="$home/manager-data"
+      mkdir -p "$data/jobs" "$data/uploads" "$data/exports" "$data/status"
+      id=123e4567-e89b-12d3-a456-426614174000
+      backup_zip_cmd() { printf 'zip' > "$1"; }
+      restore_cmd() { printf '%s %s\\n' "$*" > "$home/restore-args"; return 0; }
+
+      printf '{"id":"%s","action":"export"}\\n' "$id" > "$home/export.json"
+      process_manager_job "$data" "$home/export.json"
+      cat "$data/status/$id.json"
+      [ ! -e "$TMP_DIR/job-$id" ]
+
+      printf 'dump' > "$data/uploads/$id.dump"
+      printf 'env' > "$data/uploads/$id.env"
+      printf '{"id":"%s","action":"restore","inputDump":"%s.dump","inputEnv":"%s.env"}\\n' "$id" "$id" "$id" > "$home/restore.json"
+      process_manager_job "$data" "$home/restore.json"
+      cat "$data/status/$id.json"
+      cat "$home/restore-args"
+      [ ! -e "$data/uploads/$id.dump" ]
+      [ ! -e "$data/uploads/$id.env" ]
+      [ ! -e "$TMP_DIR/job-$id" ]
+
+      printf '{"id":"%s","action":"restore","inputZip":"../bad.zip"}\\n' "$id" > "$home/bad.json"
+      set +e
+      process_manager_job "$data" "$home/bad.json"
+      bad_status=$?
+      set -e
+      cat "$data/status/$id.json"
+      [ "$bad_status" -ne 0 ]
+    `;
+
+    const result = runBash(script);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"state":"succeeded"');
+    expect(result.stdout).toContain("/uploads/123e4567-e89b-12d3-a456-426614174000.dump");
+    expect(result.stdout).toContain('"state":"failed"');
+    expect(result.stdout).toContain("备份文件名无效");
+  });
+
+  it("installs a restricted systemd backup manager agent service", () => {
+    const script = `
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      mkdir -p "$home/bin" "$home/systemd"
+      cp local/scripts/subboost.sh "$home/bin/subboost"
+      chmod +x "$home/bin/subboost"
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      export SUBBOOST_BIN="$home/bin/subboost"
+      export SUBBOOST_SYSTEMD_UNIT_DIR="$home/systemd"
+      source local/scripts/subboost.sh
+      sudo_do() { "$@"; }
+      systemctl() { printf 'systemctl=%s\\n' "$*" >> "$home/systemctl.log"; }
+      : > "$home/systemctl.log"
+      agent_install_cmd
+      cat "$home/systemctl.log"
+      cat "$home/systemd/subboost-manager-agent.service"
+    `;
+
+    const result = runBash(script);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("systemctl=daemon-reload");
+    expect(result.stdout).toContain("systemctl=enable subboost-manager-agent.service");
+    expect(result.stdout).toContain("systemctl=restart subboost-manager-agent.service");
+    expect(result.stdout).toContain("ExecStart=\"");
+    expect(result.stdout).toContain(" agent");
+  });
+
 });

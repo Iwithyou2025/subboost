@@ -3,6 +3,7 @@
 import * as React from "react";
 import { LogOut, Network, ServerCog, ShieldCheck } from "lucide-react";
 
+import { BackupRestoreCard } from "@local/components/backup-restore-card";
 import { Button } from "@subboost/ui/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@subboost/ui/components/ui/card";
 import { SwitchField } from "@subboost/ui/components/ui/switch-field";
@@ -152,6 +153,8 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <BackupRestoreCard enabled={Boolean(user)} />
       </div>
     </div>
   );

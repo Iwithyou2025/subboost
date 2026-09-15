@@ -22,6 +22,8 @@ services:
         condition: service_healthy
     ports:
       - "${SUBBOOST_PORT:-3000}:3000"
+    volumes:
+      - subboost-manager-data:/var/lib/subboost-manager
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY}
@@ -30,6 +32,7 @@ services:
       LOCAL_SETUP_TOKEN: ${LOCAL_SETUP_TOKEN:-}
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
       APP_URL: ${APP_URL:-http://localhost:3000}
+      SUBBOOST_MANAGER_DATA_DIR: /var/lib/subboost-manager
 
   cron:
     image: curlimages/curl:8.11.1
@@ -48,3 +51,4 @@ services:
 
 volumes:
   subboost-local-db:
+  subboost-manager-data:

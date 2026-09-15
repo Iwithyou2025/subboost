@@ -159,4 +159,19 @@ describe("self-host update rollback lifecycle", () => {
       expect(compose).not.toContain("|| true");
     }
   });
+
+  it("shares only the manager spool volume with the web app", () => {
+    for (const file of ["local/docker-compose.yml", "local/docker-compose.image.yml"]) {
+      const compose = readFileSync(path.join(publicRoot, file), "utf8");
+      expect(compose).toContain("subboost-manager-data:/var/lib/subboost-manager");
+      expect(compose).toContain("SUBBOOST_MANAGER_DATA_DIR: /var/lib/subboost-manager");
+      expect(compose).not.toContain("/var/run/docker.sock");
+    }
+  });
+
+  it("installs the host backup manager agent on fresh installations", () => {
+    const installer = readFileSync(path.join(publicRoot, "local/scripts/install.sh"), "utf8");
+    expect(installer).toContain('"$SUBBOOST_BIN" agent-install');
+    expect(installer).toContain("网页备份管理服务未能自动启动");
+  });
 });

@@ -79,6 +79,10 @@ vi.mock("@local/components/local-login", () => ({
   LocalLogin: () => React.createElement("main", null, "LocalLogin"),
 }));
 
+vi.mock("@local/components/backup-restore-card", () => ({
+  BackupRestoreCard: ({ enabled }: { enabled: boolean }) => React.createElement("section", null, `BackupRestore:${enabled}`),
+}));
+
 import DashboardPage from "./dashboard/page";
 import LoginPage from "./login/page";
 import SettingsPage from "./dashboard/settings/page";

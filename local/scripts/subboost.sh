@@ -9,6 +9,8 @@ ENV_FILE="$SUBBOOST_HOME/.env"
 COMPOSE_FILE="$SUBBOOST_HOME/docker-compose.yml"
 BACKUP_DIR="$SUBBOOST_HOME/backups"
 TMP_DIR="${TMPDIR:-/tmp}/subboost-manager.$$"
+AGENT_SERVICE_NAME="subboost-manager-agent.service"
+SYSTEMD_UNIT_DIR="${SUBBOOST_SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
 
 say() {
   printf '%s\n' "$*"
@@ -247,6 +249,227 @@ create_verified_dump() {
   sudo_do mv "$partial" "$output"
 }
 
+
+env_file_value() {
+  local file="$1"
+  local key="$2"
+  awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }' "$file"
+}
+
+verify_dump_file() {
+  local dump_file="$1"
+  local -a verify_status
+  [ -s "$dump_file" ] || { say "Restore verification failed: dump file is empty."; return 1; }
+  set +e
+  sudo_do cat "$dump_file" | compose exec -T db pg_restore --list >/dev/null
+  verify_status=("${PIPESTATUS[@]}")
+  set -e
+  if (( verify_status[0] != 0 || verify_status[1] != 0 )); then
+    say "Restore verification failed: read=${verify_status[0]} pg_restore=${verify_status[1]}"
+    return 1
+  fi
+}
+
+restore_dump_with_files() {
+  local dump_file="$1"
+  local env_file="$2"
+  local compose_file="$3"
+  local -a restore_status
+  if ! compose_files "$env_file" "$compose_file" exec -T db psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-subboost}" -d "${POSTGRES_DB:-subboost}" -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public AUTHORIZATION CURRENT_USER;'; then
+    return 1
+  fi
+  set +e
+  sudo_do cat "$dump_file" | compose_files "$env_file" "$compose_file" exec -T db pg_restore --clean --if-exists --exit-on-error --no-owner --no-privileges -U "${POSTGRES_USER:-subboost}" -d "${POSTGRES_DB:-subboost}"
+  restore_status=("${PIPESTATUS[@]}")
+  set -e
+  (( restore_status[0] == 0 && restore_status[1] == 0 ))
+}
+
+compose_files_with_encryption_key() {
+  local env_file="$1"
+  local compose_file="$2"
+  local encryption_key
+  shift 2
+  encryption_key="$(env_file_value "$env_file" ENCRYPTION_KEY)"
+  [ -n "$encryption_key" ] || die "ENCRYPTION_KEY is missing from $env_file"
+  ENCRYPTION_KEY="$encryption_key" compose_files "$env_file" "$compose_file" "$@"
+}
+
+BACKUP_DB_OUT=""
+BACKUP_ENV_OUT=""
+
+create_backup_pair() {
+  local stamp="${1:-$(date -u +%Y%m%dT%H%M%SZ)}"
+  prepare_private_directory "$BACKUP_DIR"
+  BACKUP_DB_OUT="$BACKUP_DIR/subboost-$stamp.dump"
+  BACKUP_ENV_OUT="$BACKUP_DIR/subboost-$stamp.env"
+  create_verified_dump "$BACKUP_DB_OUT"
+  sudo_do install -m 600 "$ENV_FILE" "$BACKUP_ENV_OUT"
+}
+
+prune_backups() {
+  local -a sql_backups env_backups
+  local i backup_retention_count
+  backup_retention_count="${SUBBOOST_BACKUP_RETENTION_COUNT:-$DEFAULT_BACKUP_RETENTION_COUNT}"
+  if ! [[ "$backup_retention_count" =~ ^[0-9]+$ ]] || (( backup_retention_count < 1 )); then
+    die "SUBBOOST_BACKUP_RETENTION_COUNT must be a positive integer"
+  fi
+
+  shopt -s nullglob
+  sql_backups=("$BACKUP_DIR"/subboost-*.dump)
+  env_backups=("$BACKUP_DIR"/subboost-*.env)
+  shopt -u nullglob
+
+  if ((${#sql_backups[@]} > 0)); then sudo_do chmod 600 "${sql_backups[@]}"; fi
+  if ((${#env_backups[@]} > 0)); then sudo_do chmod 600 "${env_backups[@]}"; fi
+
+  for ((i = 0; i < ${#sql_backups[@]} - backup_retention_count; i++)); do
+    sudo_do rm -f -- "${sql_backups[$i]}"
+  done
+  for ((i = 0; i < ${#env_backups[@]} - backup_retention_count; i++)); do
+    sudo_do rm -f -- "${env_backups[$i]}"
+  done
+}
+
+write_backup_manifest() {
+  local output="$1"
+  local dump_name="$2"
+  local env_name="$3"
+  cat > "$output" <<EOF
+{"formatVersion":1,"createdAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","databaseFile":"$dump_name","environmentFile":"$env_name"}
+EOF
+}
+
+create_zip_from_directory() {
+  local source_dir="$1"
+  local output="$2"
+  shift 2
+  local -a names=("$@")
+  mkdir -p "$(dirname "$output")"
+  if command -v zip >/dev/null 2>&1; then
+    (cd "$source_dir" && zip -q "$output" "${names[@]}")
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$source_dir" "$output" "${names[@]}" <<'PYZIP'
+import os
+import sys
+import zipfile
+source, output, *names = sys.argv[1:]
+with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for name in names:
+        archive.write(os.path.join(source, name), arcname=name)
+PYZIP
+    return
+  fi
+  die "Creating ZIP backups requires zip or python3."
+}
+
+extract_backup_zip() {
+  local archive="$1"
+  local output_dir="$2"
+  local listing name dump_name="" env_name="" dump_count=0 env_count=0
+  mkdir -p "$output_dir"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$archive" "$output_dir" <<'PYZIP'
+import os
+import stat
+import sys
+import zipfile
+archive_path, output_dir = sys.argv[1:]
+with zipfile.ZipFile(archive_path, "r") as archive:
+    infos = archive.infolist()
+    dump_count = 0
+    env_count = 0
+    manifest_count = 0
+    for info in infos:
+        name = info.filename
+        if not name or name != os.path.basename(name) or "\\" in name or "/" in name:
+            raise SystemExit("unsafe ZIP entry")
+        mode = (info.external_attr >> 16) & 0xFFFF
+        if stat.S_ISLNK(mode):
+            raise SystemExit("symlink ZIP entries are not allowed")
+        if name.endswith(".dump"):
+            dump_count += 1
+        elif name.endswith(".env"):
+            env_count += 1
+        elif name == "manifest.json":
+            manifest_count += 1
+        else:
+            raise SystemExit("unexpected ZIP entry")
+    if dump_count != 1 or env_count != 1 or manifest_count > 1:
+        raise SystemExit("ZIP must contain exactly one dump and one env file")
+    for info in infos:
+        with archive.open(info, "r") as src, open(os.path.join(output_dir, info.filename), "wb") as dst:
+            dst.write(src.read())
+PYZIP
+  elif command -v unzip >/dev/null 2>&1; then
+    listing="$(unzip -Z1 "$archive")" || return 1
+    while IFS= read -r name; do
+      [ -n "$name" ] || continue
+      case "$name" in
+        */*|*\\*) say "Restore ZIP contains an unsafe path."; return 1 ;;
+        *.dump) dump_name="$name"; dump_count=$((dump_count + 1)) ;;
+        *.env) env_name="$name"; env_count=$((env_count + 1)) ;;
+        manifest.json) ;;
+        *) say "Restore ZIP contains an unexpected file: $name"; return 1 ;;
+      esac
+    done <<< "$listing"
+    [ "$dump_count" = "1" ] && [ "$env_count" = "1" ] || { say "Restore ZIP must contain exactly one .dump and one .env file."; return 1; }
+    unzip -p "$archive" "$dump_name" > "$output_dir/$dump_name"
+    unzip -p "$archive" "$env_name" > "$output_dir/$env_name"
+    if printf '%s\n' "$listing" | grep -Fxq manifest.json; then unzip -p "$archive" manifest.json > "$output_dir/manifest.json"; fi
+  else
+    die "Restoring ZIP backups requires unzip or python3."
+  fi
+
+  shopt -s nullglob
+  local -a dumps=("$output_dir"/*.dump) envs=("$output_dir"/*.env)
+  shopt -u nullglob
+  [ "${#dumps[@]}" = "1" ] && [ "${#envs[@]}" = "1" ] || { say "Restore ZIP must contain exactly one .dump and one .env file."; return 1; }
+  RESTORE_DUMP="${dumps[0]}"
+  RESTORE_ENV="${envs[0]}"
+}
+
+RESTORE_DUMP=""
+RESTORE_ENV=""
+
+resolve_restore_inputs() {
+  RESTORE_DUMP=""
+  RESTORE_ENV=""
+  if [ "$#" = "1" ]; then
+    [ -f "$1" ] || die "Restore archive not found: $1"
+    case "$1" in
+      *.zip) extract_backup_zip "$1" "$TMP_DIR/restore-input" || die "Restore ZIP validation failed." ;;
+      *) die "Single-file restore requires a .zip backup." ;;
+    esac
+  elif [ "$#" = "2" ]; then
+    [ -f "$1" ] || die "Restore dump not found: $1"
+    [ -f "$2" ] || die "Restore environment file not found: $2"
+    case "$1" in *.dump) ;; *) die "First restore file must end in .dump." ;; esac
+    case "$2" in *.env) ;; *) die "Second restore file must end in .env." ;; esac
+    RESTORE_DUMP="$1"
+    RESTORE_ENV="$2"
+  else
+    die "Usage: subboost restore <backup.zip> OR subboost restore <backup.dump> <backup.env>"
+  fi
+}
+
+is_safe_env_secret_value() {
+  [[ "$1" =~ ^[A-Za-z0-9._~:/+=-]{16,512}$ ]]
+}
+
+build_restore_env() {
+  local backup_env="$1"
+  local output_env="$2"
+  local encryption_key
+  encryption_key="$(env_file_value "$backup_env" ENCRYPTION_KEY)"
+  [ -n "$encryption_key" ] || die "Backup environment is missing ENCRYPTION_KEY."
+  is_safe_env_secret_value "$encryption_key" || die "Backup ENCRYPTION_KEY contains unsupported characters."
+  read_env_file > "$output_env"
+  set_file_env_value "$output_env" ENCRYPTION_KEY "$encryption_key"
+}
+
 port_number() {
   local value="$1"
   case "$value" in
@@ -380,7 +603,7 @@ status_cmd() {
   say "健康检查: $(health_status_text)"
   say "备份目录: $BACKUP_DIR"
   say ""
-  say "常用命令: subboost logs / subboost backup / subboost update / subboost restart / subboost doctor"
+  say "常用命令: subboost logs / subboost backup / subboost restore / subboost update / subboost restart / subboost doctor"
 }
 
 update_cmd() {
@@ -522,6 +745,11 @@ fi
   if [ -z "$update_error" ]; then
     compose_files_with_image "$image" "$candidate_env" "$candidate_compose" up -d --no-deps --force-recreate cron || update_error="candidate cron startup failed"
   fi
+  if [ -z "$update_error" ] && [ "$manager_present" = "1" ] && command -v systemctl >/dev/null 2>&1; then
+    if ! sudo_do env SUBBOOST_HOME="$SUBBOOST_HOME" SUBBOOST_BIN="${SUBBOOST_BIN:-/usr/local/bin/subboost}" "${SUBBOOST_BIN:-/usr/local/bin/subboost}" agent-install >/dev/null 2>&1; then
+      say "Warning: web backup manager agent could not be installed automatically. Run: sudo subboost agent-install"
+    fi
+  fi
 
   if [ -n "$update_error" ]; then
     say "Candidate update failed: $update_error"
@@ -572,39 +800,317 @@ logs_cmd() {
   compose logs -f --tail="${SUBBOOST_LOG_TAIL:-200}" "$@"
 }
 
+backup_zip_cmd() {
+  local output="${1:-}"
+  umask 077
+  local stamp work_dir manifest
+  load_env
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  create_backup_pair "$stamp"
+  prune_backups
+  work_dir="$TMP_DIR/backup-zip-$stamp"
+  mkdir -p "$work_dir"
+  sudo_do cp "$BACKUP_DB_OUT" "$work_dir/$(basename "$BACKUP_DB_OUT")"
+  sudo_do cp "$BACKUP_ENV_OUT" "$work_dir/$(basename "$BACKUP_ENV_OUT")"
+  manifest="$work_dir/manifest.json"
+  write_backup_manifest "$manifest" "$(basename "$BACKUP_DB_OUT")" "$(basename "$BACKUP_ENV_OUT")"
+  if [ -z "$output" ]; then output="$BACKUP_DIR/subboost-backup-$stamp.zip"; fi
+  output="$(cd "$(dirname "$output")" 2>/dev/null && pwd)/$(basename "$output")" || die "Backup ZIP output directory does not exist."
+  create_zip_from_directory "$work_dir" "$output" "$(basename "$BACKUP_DB_OUT")" "$(basename "$BACKUP_ENV_OUT")" manifest.json
+  sudo_do chmod 600 "$output"
+  say "Backup ZIP written:"
+  say "  $output"
+}
+
 backup_cmd() {
   load_env
-  prepare_private_directory "$BACKUP_DIR"
-  local stamp db_out env_out
-  local -a sql_backups env_backups
-  local i backup_retention_count
-  backup_retention_count="${SUBBOOST_BACKUP_RETENTION_COUNT:-$DEFAULT_BACKUP_RETENTION_COUNT}"
-  if ! [[ "$backup_retention_count" =~ ^[0-9]+$ ]] || (( backup_retention_count < 1 )); then
-    die "SUBBOOST_BACKUP_RETENTION_COUNT must be a positive integer"
+  if [ "${1:-}" = "--zip" ]; then
+    [ "$#" -le 2 ] || die "Usage: subboost backup --zip [output.zip]"
+    backup_zip_cmd "${2:-}"
+    return
   fi
-  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  db_out="$BACKUP_DIR/subboost-$stamp.dump"
-  env_out="$BACKUP_DIR/subboost-$stamp.env"
-  create_verified_dump "$db_out"
-  sudo_do install -m 600 "$ENV_FILE" "$env_out"
-
-  shopt -s nullglob
-  sql_backups=("$BACKUP_DIR"/subboost-*.dump)
-  env_backups=("$BACKUP_DIR"/subboost-*.env)
-  shopt -u nullglob
-
-  if ((${#sql_backups[@]} > 0)); then sudo_do chmod 600 "${sql_backups[@]}"; fi
-  if ((${#env_backups[@]} > 0)); then sudo_do chmod 600 "${env_backups[@]}"; fi
-
-  for ((i = 0; i < ${#sql_backups[@]} - backup_retention_count; i++)); do
-    sudo_do rm -f -- "${sql_backups[$i]}"
-  done
-  for ((i = 0; i < ${#env_backups[@]} - backup_retention_count; i++)); do
-    sudo_do rm -f -- "${env_backups[$i]}"
-  done
+  [ "$#" = "0" ] || die "Usage: subboost backup [--zip [output.zip]]"
+  create_backup_pair
+  prune_backups
   say "Backup written:"
-  say "  $db_out"
-  say "  $env_out"
+  say "  $BACKUP_DB_OUT"
+  say "  $BACKUP_ENV_OUT"
+}
+
+restore_cmd() {
+  umask 077
+  load_env
+  mkdir -p "$TMP_DIR"
+  resolve_restore_inputs "$@"
+  local old_env="$TMP_DIR/restore-old.env"
+  local candidate_env="$TMP_DIR/restore-candidate.env"
+  local safety_stamp safety_dump safety_env restore_error rollback_error
+  safety_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  safety_dump="$BACKUP_DIR/restore-safety-$safety_stamp.dump"
+  safety_env="$BACKUP_DIR/restore-safety-$safety_stamp.env"
+
+  compose up -d db
+  verify_dump_file "$RESTORE_DUMP" || die "Backup database dump is invalid."
+  build_restore_env "$RESTORE_ENV" "$candidate_env"
+  read_env_file > "$old_env"
+  prepare_private_directory "$BACKUP_DIR"
+
+  sudo_do install -m 600 "$ENV_FILE" "$safety_env"
+  stage_install_file "$candidate_env" "$ENV_FILE" 600 || die "Restore environment could not be staged safely."
+
+  say "Pausing app and cron for a stable safety snapshot..."
+  if ! compose stop cron app; then
+    sudo_do rm -f "${ENV_FILE}.candidate.$$"
+    compose_files "$old_env" "$COMPOSE_FILE" up -d app >/dev/null 2>&1 || true
+    compose_files "$old_env" "$COMPOSE_FILE" up -d --no-deps --force-recreate cron >/dev/null 2>&1 || true
+    die "Restore aborted because app and cron could not be paused safely."
+  fi
+
+  say "Creating a verified safety backup before restore..."
+  if ! create_verified_dump "$safety_dump"; then
+    sudo_do rm -f "${ENV_FILE}.candidate.$$"
+    if ! compose_files "$old_env" "$COMPOSE_FILE" up -d app || ! wait_for_health; then
+      compose_files "$old_env" "$COMPOSE_FILE" stop cron app >/dev/null 2>&1 || true
+      die "Restore aborted because the safety database backup failed, and the original app could not be resumed safely."
+    fi
+    compose_files "$old_env" "$COMPOSE_FILE" up -d --no-deps --force-recreate cron >/dev/null 2>&1 || true
+    die "Restore aborted because the safety database backup failed."
+  fi
+
+  restore_error=""
+  restore_dump_with_files "$RESTORE_DUMP" "$old_env" "$COMPOSE_FILE" || restore_error="database restore failed"
+  if [ -z "$restore_error" ]; then
+    activate_staged_file "$ENV_FILE" || restore_error="restored environment activation failed"
+  fi
+  if [ -z "$restore_error" ]; then
+    compose_files_with_encryption_key "$candidate_env" "$COMPOSE_FILE" up -d db || restore_error="database startup failed"
+  fi
+  if [ -z "$restore_error" ]; then
+    compose_files_with_encryption_key "$candidate_env" "$COMPOSE_FILE" up -d --no-deps --force-recreate app || restore_error="app startup or migration failed"
+  fi
+  if [ -z "$restore_error" ] && ! wait_for_health; then
+    restore_error="health check failed"
+  fi
+  if [ -z "$restore_error" ]; then
+    compose_files_with_encryption_key "$candidate_env" "$COMPOSE_FILE" up -d --no-deps --force-recreate cron || restore_error="cron startup failed"
+  fi
+
+  if [ -n "$restore_error" ]; then
+    say "Restore failed: $restore_error"
+    compose_files "$candidate_env" "$COMPOSE_FILE" stop cron app >/dev/null 2>&1 || true
+    sudo_do rm -f "${ENV_FILE}.candidate.$$"
+    rollback_error=""
+    atomic_install_file "$old_env" "$ENV_FILE" 600 || rollback_error="original environment restore failed"
+    compose_files "$old_env" "$COMPOSE_FILE" up -d db || rollback_error="database container did not start for rollback"
+    if [ -z "$rollback_error" ]; then
+      restore_dump_with_files "$safety_dump" "$old_env" "$COMPOSE_FILE" || rollback_error="safety database restore failed"
+    fi
+    if [ -n "$rollback_error" ]; then
+      compose_files "$old_env" "$COMPOSE_FILE" stop cron app >/dev/null 2>&1 || true
+      say "Automatic rollback stopped: $rollback_error"
+      say "Safety dump preserved at: $safety_dump"
+      say "Safety environment preserved at: $safety_env"
+      return 1
+    fi
+    compose_files "$old_env" "$COMPOSE_FILE" up -d --no-deps --force-recreate app
+    if ! wait_for_health; then
+      compose_files "$old_env" "$COMPOSE_FILE" stop cron app >/dev/null 2>&1 || true
+      say "Safety database and environment were restored, but the app did not become healthy."
+      say "Safety dump preserved at: $safety_dump"
+      return 1
+    fi
+    compose_files "$old_env" "$COMPOSE_FILE" up -d --no-deps --force-recreate cron
+    say "Previous data and environment restored successfully."
+    return 1
+  fi
+
+  load_env
+  say "Restore completed successfully."
+  say "Safety backup retained: $safety_dump"
+  status_cmd
+}
+
+manager_data_host_dir() {
+  local app_id source
+  app_id="$(service_container_id app)"
+  [ -n "$app_id" ] || return 1
+  source="$(docker_cmd inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/subboost-manager"}}{{.Source}}{{end}}{{end}}' "$app_id" 2>/dev/null || true)"
+  [ -n "$source" ] && [ -d "$source" ] || return 1
+  printf '%s\n' "$source"
+}
+
+manager_prepare_data_dirs() {
+  local data_dir="$1"
+  local dir
+  for dir in jobs uploads exports status; do
+    sudo_do mkdir -p "$data_dir/$dir"
+    sudo_do chown --reference="$data_dir" "$data_dir/$dir" 2>/dev/null || true
+    sudo_do chmod 700 "$data_dir/$dir"
+  done
+}
+
+json_escape_line() {
+  printf '%s' "$1" | tr '\t\r\n' '   ' | LC_ALL=C tr -d '\000-\010\013\014\016-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+manager_write_status() {
+  local data_dir="$1" id="$2" action="$3" state="$4" message="${5:-}" output_file="${6:-}"
+  local status_file="$data_dir/status/$id.json"
+  local tmp="$status_file.tmp.$$"
+  printf '{"id":"%s","action":"%s","state":"%s","message":"%s","outputFile":"%s","updatedAt":"%s"}\n' \
+    "$(json_escape_line "$id")" \
+    "$(json_escape_line "$action")" \
+    "$(json_escape_line "$state")" \
+    "$(json_escape_line "$message")" \
+    "$(json_escape_line "$output_file")" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp"
+  sudo_do chown --reference="$data_dir" "$tmp" 2>/dev/null || true
+  sudo_do chmod 600 "$tmp"
+  sudo_do mv -f "$tmp" "$status_file"
+}
+
+manager_write_heartbeat() {
+  local data_dir="$1"
+  local tmp="$data_dir/agent-heartbeat.tmp.$$"
+  printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp"
+  sudo_do chown --reference="$data_dir" "$tmp" 2>/dev/null || true
+  sudo_do chmod 600 "$tmp"
+  sudo_do mv -f "$tmp" "$data_dir/agent-heartbeat"
+}
+
+safe_manager_filename() {
+  case "$1" in
+    ""|*/*|*\\*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+process_manager_job() {
+  local data_dir="$1" job_file="$2"
+  local id action input_zip input_dump input_env output_file output_path output status=0 job_tmp
+  id="$(json_get id "$job_file" || true)"
+  action="$(json_get action "$job_file" || true)"
+  [[ "$id" =~ ^[a-f0-9-]{36}$ ]] || return 1
+  case "$action" in export|restore) ;; *) return 1 ;; esac
+  manager_write_status "$data_dir" "$id" "$action" running "任务正在执行。"
+
+  if [ "$action" = "export" ]; then
+    output_file="subboost-backup-$(date -u +%Y%m%dT%H%M%SZ)-$id.zip"
+    output_path="$data_dir/exports/$output_file"
+    job_tmp="$TMP_DIR/job-$id"
+    prepare_private_directory "$job_tmp"
+    set +e
+    output="$(
+      TMP_DIR="$job_tmp"
+      backup_zip_cmd "$output_path" 2>&1
+    )"
+    status=$?
+    set -e
+    sudo_do rm -rf -- "$job_tmp"
+    if [ "$status" = "0" ]; then
+      sudo_do chown --reference="$data_dir" "$output_path" 2>/dev/null || true
+      sudo_do chmod 600 "$output_path"
+      manager_write_status "$data_dir" "$id" "$action" succeeded "备份已生成。" "$output_file"
+    else
+      manager_write_status "$data_dir" "$id" "$action" failed "${output:-备份导出失败。}"
+    fi
+    return "$status"
+  fi
+
+  input_zip="$(json_get inputZip "$job_file" || true)"
+  input_dump="$(json_get inputDump "$job_file" || true)"
+  input_env="$(json_get inputEnv "$job_file" || true)"
+  job_tmp="$TMP_DIR/job-$id"
+  prepare_private_directory "$job_tmp"
+  if [ -n "$input_zip" ]; then
+    safe_manager_filename "$input_zip" || { sudo_do rm -rf -- "$job_tmp"; manager_write_status "$data_dir" "$id" "$action" failed "备份文件名无效。"; return 1; }
+    set +e
+    output="$(
+      TMP_DIR="$job_tmp"
+      restore_cmd "$data_dir/uploads/$input_zip" 2>&1
+    )"
+    status=$?
+    set -e
+    sudo_do rm -f -- "$data_dir/uploads/$input_zip"
+  else
+    safe_manager_filename "$input_dump" && safe_manager_filename "$input_env" || { sudo_do rm -rf -- "$job_tmp"; manager_write_status "$data_dir" "$id" "$action" failed "备份文件名无效。"; return 1; }
+    set +e
+    output="$(
+      TMP_DIR="$job_tmp"
+      restore_cmd "$data_dir/uploads/$input_dump" "$data_dir/uploads/$input_env" 2>&1
+    )"
+    status=$?
+    set -e
+    sudo_do rm -f -- "$data_dir/uploads/$input_dump" "$data_dir/uploads/$input_env"
+  fi
+  sudo_do rm -rf -- "$job_tmp"
+  if [ "$status" = "0" ]; then
+    manager_write_status "$data_dir" "$id" "$action" succeeded "恢复成功，SubBoost 已重新启动。"
+  else
+    manager_write_status "$data_dir" "$id" "$action" failed "${output:-恢复失败。}"
+  fi
+  return "$status"
+}
+
+agent_cmd() {
+  load_env
+  local data_dir="" interval="${SUBBOOST_AGENT_POLL_SECONDS:-2}" job working
+  while true; do
+    data_dir="$(manager_data_host_dir || true)"
+    if [ -z "$data_dir" ]; then
+      sleep "$interval"
+      continue
+    fi
+    manager_prepare_data_dirs "$data_dir"
+    manager_write_heartbeat "$data_dir"
+    shopt -s nullglob
+    local -a jobs=("$data_dir"/jobs/*.json)
+    shopt -u nullglob
+    for job in "${jobs[@]}"; do
+      working="${job}.working.$$"
+      sudo_do mv "$job" "$working" 2>/dev/null || continue
+      process_manager_job "$data_dir" "$working" || true
+      sudo_do rm -f -- "$working"
+      manager_write_heartbeat "$data_dir"
+    done
+    sleep "$interval"
+  done
+}
+
+agent_install_cmd() {
+  command -v systemctl >/dev/null 2>&1 || die "systemd is required for the web backup manager agent."
+  local manager_bin unit_tmp unit_file
+  manager_bin="${SUBBOOST_BIN:-}"
+  if [ -z "$manager_bin" ]; then
+    manager_bin="$(command -v subboost || true)"
+  fi
+  [ -n "$manager_bin" ] && [ -x "$manager_bin" ] || die "Cannot locate the installed subboost manager binary."
+  unit_file="$SYSTEMD_UNIT_DIR/$AGENT_SERVICE_NAME"
+  unit_tmp="$TMP_DIR/$AGENT_SERVICE_NAME"
+  mkdir -p "$TMP_DIR"
+  cat > "$unit_tmp" <<EOF
+[Unit]
+Description=SubBoost backup and restore manager agent
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+Environment="SUBBOOST_HOME=$SUBBOOST_HOME"
+Environment="SUBBOOST_BIN=$manager_bin"
+ExecStart="$manager_bin" agent
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  sudo_do mkdir -p "$SYSTEMD_UNIT_DIR"
+  sudo_do install -m 644 "$unit_tmp" "$unit_file"
+  sudo_do systemctl daemon-reload
+  sudo_do systemctl enable "$AGENT_SERVICE_NAME" >/dev/null
+  sudo_do systemctl restart "$AGENT_SERVICE_NAME"
+  say "Backup manager agent installed and started."
 }
 
 restart_cmd() {
@@ -640,10 +1146,11 @@ menu_cmd() {
   say "2) Update"
   say "3) Logs"
   say "4) Backup"
-  say "5) Restart"
-  say "6) Doctor"
+  say "5) Restore"
+  say "6) Restart"
+  say "7) Doctor"
   say "0) Exit"
-  local choice=""
+  local choice="" restore_path=""
   if [ -t 0 ]; then
     printf 'Choose: '
     IFS= read -r choice || choice=""
@@ -653,8 +1160,14 @@ menu_cmd() {
     2) update_cmd ;;
     3) logs_cmd ;;
     4) backup_cmd ;;
-    5) restart_cmd ;;
-    6) doctor_cmd ;;
+    5)
+      printf 'Backup ZIP path: '
+      IFS= read -r restore_path || restore_path=""
+      [ -n "$restore_path" ] || die "Backup path is required."
+      restore_cmd "$restore_path"
+      ;;
+    6) restart_cmd ;;
+    7) doctor_cmd ;;
     0|"") exit 0 ;;
     *) die "Unknown menu choice: $choice" ;;
   esac
@@ -668,9 +1181,12 @@ main() {
     status) status_cmd ;;
     update) update_cmd ;;
     logs) logs_cmd "$@" ;;
-    backup) backup_cmd ;;
+    backup) backup_cmd "$@" ;;
+    restore) restore_cmd "$@" ;;
     restart) restart_cmd ;;
     doctor) doctor_cmd ;;
+    agent) agent_cmd ;;
+    agent-install) agent_install_cmd ;;
     *) die "Unknown command: $command" ;;
   esac
 }

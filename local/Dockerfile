@@ -62,6 +62,8 @@ ENV APP_BUILD_SHA=${APP_BUILD_SHA}
 ENV APP_VERSION=${APP_VERSION}
 ENV APP_VERSION_TOKEN=${APP_VERSION_TOKEN}
 RUN apk add --no-cache openssl
+RUN mkdir -p /var/lib/subboost-manager/jobs /var/lib/subboost-manager/uploads /var/lib/subboost-manager/exports /var/lib/subboost-manager/status \
+    && chown -R node:node /var/lib/subboost-manager
 
 COPY --chown=node:node --from=builder /package/local/.next/standalone ./
 COPY --chown=node:node --from=production-deps /package/node_modules ./node_modules

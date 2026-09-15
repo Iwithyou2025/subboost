@@ -80,6 +80,10 @@ vi.mock("@subboost/ui/store/user-store", () => ({
   useUserStore: () => harness.userState,
 }));
 
+vi.mock("@local/components/backup-restore-card", () => ({
+  BackupRestoreCard: ({ enabled }: { enabled: boolean }) => React.createElement("section", null, `BackupRestore:${enabled}`),
+}));
+
 import SettingsPage from "../../../local/app/dashboard/settings/page";
 
 function response(body: unknown, ok = true) {
