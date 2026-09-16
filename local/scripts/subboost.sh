@@ -1435,6 +1435,120 @@ EOF
   say "Backup manager agent installed and started."
 }
 
+validate_delete_targets() {
+  [ -n "$SUBBOOST_HOME" ] && [[ "$SUBBOOST_HOME" = /* ]] || die "SUBBOOST_HOME must be an absolute path."
+  case "$SUBBOOST_HOME" in
+    /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/var)
+      die "Refusing to delete unsafe SUBBOOST_HOME: $SUBBOOST_HOME"
+      ;;
+  esac
+}
+
+delete_compose_project_name() {
+  local container_id project_name
+  container_id="$(compose ps -q -a 2>/dev/null | head -n 1 || true)"
+  if [ -n "$container_id" ]; then
+    project_name="$(docker_cmd inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$container_id" 2>/dev/null || true)"
+    if [ -n "$project_name" ]; then
+      printf '%s\n' "$project_name"
+      return 0
+    fi
+  fi
+  basename "$SUBBOOST_HOME" | LC_ALL=C tr '[:upper:]' '[:lower:]' | sed 's/^[^a-z0-9]*//; s/[^a-z0-9_-]//g'
+}
+
+delete_docker_residuals() {
+  local project_name="$1"
+  local image residuals=""
+  shift
+
+  if [ -n "$(docker_cmd ps -aq --filter "label=com.docker.compose.project=$project_name" 2>/dev/null || true)" ]; then
+    residuals="${residuals} containers"
+  fi
+  if [ -n "$(docker_cmd volume ls -q --filter "label=com.docker.compose.project=$project_name" 2>/dev/null || true)" ]; then
+    residuals="${residuals} volumes"
+  fi
+  if [ -n "$(docker_cmd network ls -q --filter "label=com.docker.compose.project=$project_name" 2>/dev/null || true)" ]; then
+    residuals="${residuals} networks"
+  fi
+  for image in "$@"; do
+    if docker_cmd image inspect "$image" >/dev/null 2>&1; then
+      residuals="${residuals} image:$image"
+    fi
+  done
+
+  [ -z "$residuals" ] || die "SubBoost Docker resources remain:$residuals"
+}
+
+delete_cmd() {
+  local confirmation="" project_name manager_bin unit_file image key rollback_image
+  local seen_images=" "
+  local -a images=()
+
+  validate_delete_targets
+  load_env
+  manager_bin="${SUBBOOST_BIN:-/usr/local/bin/subboost}"
+  unit_file="$SYSTEMD_UNIT_DIR/$AGENT_SERVICE_NAME"
+
+  say "警告：此操作将永久删除 SubBoost 的数据库、配置、备份、容器、数据卷和应用镜像。"
+  printf '请输入 DELETE 确认删除，其他输入将取消: '
+  IFS= read -r confirmation || confirmation=""
+  if [ "$confirmation" != "DELETE" ]; then
+    say "已取消删除。"
+    return 0
+  fi
+
+  for key in SUBBOOST_IMAGE SUBBOOST_CANDIDATE_IMAGE; do
+    image="$(env_file_value "$ENV_FILE" "$key")"
+    [ -n "$image" ] || continue
+    case "$seen_images" in
+      *" $image "*) ;;
+      *) images+=("$image"); seen_images="${seen_images}${image} " ;;
+    esac
+  done
+  while IFS= read -r rollback_image; do
+    [ -n "$rollback_image" ] || continue
+    case "$seen_images" in
+      *" $rollback_image "*) ;;
+      *) images+=("$rollback_image"); seen_images="${seen_images}${rollback_image} " ;;
+    esac
+  done < <(docker_cmd image ls --format '{{.Repository}}:{{.Tag}}' --filter 'reference=subboost-rollback:update-*' 2>/dev/null || true)
+
+  project_name="$(delete_compose_project_name)"
+  [ -n "$project_name" ] || die "Unable to determine the SubBoost Docker Compose project name."
+
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo_do systemctl disable --now "$AGENT_SERVICE_NAME" >/dev/null 2>&1 || true
+  fi
+
+  say "正在删除 SubBoost 容器、网络和数据卷..."
+  compose down --volumes --remove-orphans || die "Docker Compose cleanup failed; installation files were retained."
+
+  say "正在删除 SubBoost 应用镜像..."
+  for image in "${images[@]}"; do
+    docker_cmd image rm "$image" >/dev/null 2>&1 || true
+  done
+  delete_docker_residuals "$project_name" "${images[@]}"
+
+  sudo_do rm -f -- "$unit_file"
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo_do systemctl daemon-reload >/dev/null 2>&1 || true
+    sudo_do systemctl reset-failed "$AGENT_SERVICE_NAME" >/dev/null 2>&1 || true
+  fi
+  sudo_do rm -f -- "$manager_bin"
+  sudo_do rm -rf -- "$SUBBOOST_HOME"
+
+  [ ! -e "$SUBBOOST_HOME" ] || die "SubBoost installation directory remains: $SUBBOOST_HOME"
+  [ ! -e "$manager_bin" ] || die "SubBoost manager remains: $manager_bin"
+  [ ! -e "$unit_file" ] || die "SubBoost manager service remains: $unit_file"
+  if command -v systemctl >/dev/null 2>&1 && sudo_do systemctl is-active --quiet "$AGENT_SERVICE_NAME"; then
+    die "SubBoost manager service is still active."
+  fi
+  delete_docker_residuals "$project_name" "${images[@]}"
+
+  say "SubBoost 的所有数据、服务和应用镜像均已删除。"
+}
+
 restart_cmd() {
   compose up -d --remove-orphans
   compose up -d --no-deps --force-recreate app
@@ -1472,6 +1586,7 @@ menu_cmd() {
   say "6) Restart"
   say "7) Doctor"
   say "8) Full migration"
+  say "9) Delete SubBoost"
   say "0) Exit"
   local choice="" restore_path=""
   if [ -t 0 ]; then
@@ -1497,6 +1612,7 @@ menu_cmd() {
       [ -n "$restore_path" ] || die "Backup path is required."
       migrate_cmd "$restore_path"
       ;;
+    9) delete_cmd ;;
     0|"") exit 0 ;;
     *) die "Unknown menu choice: $choice" ;;
   esac
@@ -1517,6 +1633,7 @@ main() {
     doctor) doctor_cmd ;;
     agent) agent_cmd ;;
     agent-install) agent_install_cmd ;;
+    delete) delete_cmd ;;
     *) die "Unknown command: $command" ;;
   esac
 }
