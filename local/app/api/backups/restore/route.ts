@@ -26,12 +26,11 @@ export async function POST(request: Request) {
 
     const files = formData.getAll("files").filter((value): value is File => value instanceof File);
     const modeValue = formData.get("mode");
-    if (modeValue !== null && modeValue !== "data" && modeValue !== "full") {
+    if (modeValue !== null && modeValue !== "data") {
       return apiError("Invalid restore mode.", "VALIDATION_ERROR", 400);
     }
-    const mode = modeValue === "full" ? "full" : "data";
     try {
-      return json({ jobId: await createRestoreJob(admin.id, files, mode) }, 202);
+      return json({ jobId: await createRestoreJob(admin.id, files) }, 202);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Invalid backup upload.";
       const status = message.includes("256 MiB") ? 413 : 400;

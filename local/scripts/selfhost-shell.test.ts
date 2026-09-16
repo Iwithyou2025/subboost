@@ -991,7 +991,6 @@ ENV
       backup_zip_cmd() { printf 'zip' > "$1"; }
       backup_filename_stamp() { printf '2026-09-16-11-27-57\\n'; }
       restore_cmd() { printf '%s %s\\n' "$*" > "$home/restore-args"; return 0; }
-      migrate_cmd() { printf '%s\\n' "$*" > "$home/migrate-args"; return 0; }
 
       printf '{"id":"%s","action":"export"}\\n' "$id" > "$home/export.json"
       process_manager_job "$data" "$home/export.json"
@@ -1010,13 +1009,6 @@ ENV
       [ ! -e "$data/uploads/$id.env" ]
       [ ! -e "$TMP_DIR/job-$id" ]
 
-      printf 'zip' > "$data/uploads/$id.zip"
-      printf '{"id":"%s","action":"migrate","inputZip":"%s.zip"}\\n' "$id" "$id" > "$home/migrate.json"
-      process_manager_job "$data" "$home/migrate.json"
-      cat "$data/status/$id.json"
-      cat "$home/migrate-args"
-      [ ! -e "$data/uploads/$id.zip" ]
-      [ ! -e "$TMP_DIR/job-$id" ]
 
       printf '{"id":"%s","action":"restore","inputZip":"../bad.zip"}\\n' "$id" > "$home/bad.json"
       set +e
@@ -1031,8 +1023,6 @@ ENV
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('"state":"succeeded"');
     expect(result.stdout).toContain("/uploads/123e4567-e89b-12d3-a456-426614174000.dump");
-    expect(result.stdout).toContain("/uploads/123e4567-e89b-12d3-a456-426614174000.zip");
-    expect(result.stdout).toContain("完整迁移成功");
     expect(result.stdout).toContain('"state":"failed"');
     expect(result.stdout).toContain("备份文件名无效");
   });

@@ -462,12 +462,10 @@ PYZIP
 
 RESTORE_DUMP=""
 RESTORE_ENV=""
-RESTORE_MANIFEST=""
 
 resolve_restore_inputs() {
   RESTORE_DUMP=""
   RESTORE_ENV=""
-  RESTORE_MANIFEST=""
   if [ "$#" = "1" ]; then
     [ -f "$1" ] || die "Restore archive not found: $1"
     case "$1" in
@@ -484,77 +482,6 @@ resolve_restore_inputs() {
   else
     die "Usage: subboost restore <backup.zip> OR subboost restore <backup.dump> <backup.env>"
   fi
-}
-
-validate_full_migration_environment() {
-  local env_file="$1"
-  local line key value expected_database_url
-  local -a required_keys=(
-    SUBBOOST_IMAGE
-    POSTGRES_DB
-    POSTGRES_USER
-    POSTGRES_PASSWORD
-    DATABASE_URL
-    ENCRYPTION_KEY
-    JWT_SECRET
-    CRON_SECRET
-    APP_URL
-    SUBBOOST_PORT
-  )
-  local -a missing=()
-  local -A seen=()
-
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      ""|\#*) continue ;;
-    esac
-    if ! [[ "$line" =~ ^[A-Z][A-Z0-9_]*= ]]; then
-      die "Backup environment contains an unsupported line: ${line%%=*}"
-    fi
-    key="${line%%=*}"
-    value="${line#*=}"
-    [ -z "${seen[$key]:-}" ] || die "Backup environment contains a duplicate setting: $key"
-    seen[$key]=1
-    printf '%s' "$value" | LC_ALL=C grep -Eq '^[][A-Za-z0-9._~:/?=%+@,-]*$' || \
-      die "Backup environment contains an unsafe value: $key"
-  done < "$env_file"
-
-  for key in "${required_keys[@]}"; do
-    value="$(env_file_value "$env_file" "$key" || true)"
-    if [ -z "$value" ]; then missing+=("$key"); fi
-  done
-  if [ "${#missing[@]}" -gt 0 ]; then
-    die "Backup configuration is incomplete. Missing: ${missing[*]}"
-  fi
-
-  port_is_number "$(env_file_value "$env_file" SUBBOOST_PORT)" || \
-    die "Backup SUBBOOST_PORT must be a number between 1 and 65535."
-  expected_database_url="postgresql://$(env_file_value "$env_file" POSTGRES_USER):$(env_file_value "$env_file" POSTGRES_PASSWORD)@db:5432/$(env_file_value "$env_file" POSTGRES_DB)?schema=public"
-  [ "$(env_file_value "$env_file" DATABASE_URL)" = "$expected_database_url" ] || \
-    die "Backup DATABASE_URL does not match its POSTGRES_DB, POSTGRES_USER, and POSTGRES_PASSWORD values."
-}
-
-validate_full_migration_manifest() {
-  local format_version database_file environment_file
-  [ -f "$RESTORE_MANIFEST" ] || die "Full migration requires manifest.json in the backup ZIP."
-  format_version="$(json_get formatVersion "$RESTORE_MANIFEST" || true)"
-  if [ -z "$format_version" ] && grep -Eq '"formatVersion"[[:space:]]*:[[:space:]]*1([,}])' "$RESTORE_MANIFEST"; then
-    format_version=1
-  fi
-  database_file="$(json_get databaseFile "$RESTORE_MANIFEST" || true)"
-  environment_file="$(json_get environmentFile "$RESTORE_MANIFEST" || true)"
-  [ "$format_version" = "1" ] || die "Unsupported backup format version: ${format_version:-missing}"
-  [ "$database_file" = "$(basename "$RESTORE_DUMP")" ] || die "Backup manifest databaseFile does not match the ZIP contents."
-  [ "$environment_file" = "$(basename "$RESTORE_ENV")" ] || die "Backup manifest environmentFile does not match the ZIP contents."
-}
-
-resolve_full_migration_input() {
-  [ "$#" = "1" ] || die "Usage: subboost migrate <backup.zip>"
-  case "$1" in *.zip) ;; *) die "Full migration requires a .zip backup." ;; esac
-  resolve_restore_inputs "$1"
-  RESTORE_MANIFEST="$TMP_DIR/restore-input/manifest.json"
-  validate_full_migration_manifest
-  validate_full_migration_environment "$RESTORE_ENV"
 }
 
 is_safe_env_secret_value() {
@@ -580,48 +507,6 @@ port_number() {
   value="${value#[}"
   value="${value%]}"
   printf '%s\n' "$value"
-}
-
-port_is_number() {
-  local port
-  port="$(port_number "$1")"
-  case "$port" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
-}
-
-port_is_free() {
-  local port
-  port="$(port_number "$1")"
-  port_is_number "$port" || return 1
-
-  if command -v ss >/dev/null 2>&1; then
-    ! ss -H -ltn 2>/dev/null | awk -v port="$port" '{ if ($4 ~ ":" port "$") found = 1 } END { exit found ? 0 : 1 }'
-    return
-  fi
-  if command -v netstat >/dev/null 2>&1; then
-    ! netstat -ltn 2>/dev/null | awk -v port="$port" 'NR > 2 { if ($4 ~ ":" port "$") found = 1 } END { exit found ? 0 : 1 }'
-    return
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "$port" <<'PY'
-import socket
-import sys
-
-port = int(sys.argv[1])
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-try:
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("0.0.0.0", port))
-except OSError:
-    sys.exit(1)
-finally:
-    sock.close()
-PY
-    return $?
-  fi
-  return 0
 }
 
 service_container_id() {
@@ -747,7 +632,7 @@ status_cmd() {
   say "健康检查: $(health_status_text)"
   say "备份目录: $BACKUP_DIR"
   say ""
-  say "常用命令: subboost logs / subboost backup / subboost restore / subboost migrate / subboost update / subboost restart / subboost doctor"
+  say "常用命令: subboost logs / subboost backup / subboost restore / subboost update / subboost restart / subboost doctor"
 }
 
 update_cmd() {
@@ -1079,165 +964,6 @@ restore_cmd() {
   status_cmd
 }
 
-database_volume_name_with_files() {
-  local env_file="$1"
-  local compose_file="$2"
-  local container_id
-  container_id="$(compose_files "$env_file" "$compose_file" ps -q db 2>/dev/null | head -n 1 || true)"
-  [ -n "$container_id" ] || return 1
-  docker_cmd inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{if eq .Type "volume"}}{{.Name}}{{end}}{{end}}{{end}}' "$container_id" 2>/dev/null
-}
-
-remove_database_volume_with_files() {
-  local env_file="$1"
-  local compose_file="$2"
-  local volume_name="$3"
-  compose_files "$env_file" "$compose_file" stop db >/dev/null 2>&1 || true
-  compose_files "$env_file" "$compose_file" rm -f db >/dev/null 2>&1 || return 1
-  if docker_cmd volume inspect "$volume_name" >/dev/null 2>&1; then
-    docker_cmd volume rm "$volume_name" >/dev/null || return 1
-  fi
-}
-
-restored_admin_usernames_with_files() {
-  local env_file="$1"
-  local compose_file="$2"
-  local db_user db_name
-  db_user="$(env_file_value "$env_file" POSTGRES_USER)"
-  db_name="$(env_file_value "$env_file" POSTGRES_DB)"
-  compose_files "$env_file" "$compose_file" exec -T db psql -v ON_ERROR_STOP=1 -At -U "$db_user" -d "$db_name" \
-    -c 'SELECT "username" FROM "LocalAdmin" ORDER BY "createdAt";' | tr -d '\r' | sed '/^$/d' | paste -sd, -
-}
-
-rollback_full_migration() {
-  local candidate_env="$1"
-  local old_env="$2"
-  local safety_dump="$3"
-  local database_volume="$4"
-  local rollback_error=""
-
-  compose_files "$candidate_env" "$COMPOSE_FILE" stop cron app db >/dev/null 2>&1 || true
-  remove_database_volume_with_files "$candidate_env" "$COMPOSE_FILE" "$database_volume" || rollback_error="candidate database volume removal failed"
-  atomic_install_file "$old_env" "$ENV_FILE" 600 || rollback_error="original environment restore failed"
-  if [ -z "$rollback_error" ]; then
-    compose_files "$old_env" "$COMPOSE_FILE" up -d db || rollback_error="original database startup failed"
-  fi
-  if [ -z "$rollback_error" ]; then
-    wait_for_database_with_files "$old_env" "$COMPOSE_FILE" || rollback_error="original database readiness check failed"
-  fi
-  if [ -z "$rollback_error" ]; then
-    restore_dump_with_files "$safety_dump" "$old_env" "$COMPOSE_FILE" || rollback_error="safety database restore failed"
-  fi
-  if [ -z "$rollback_error" ]; then
-    load_env
-    compose_files "$old_env" "$COMPOSE_FILE" up -d app || rollback_error="original app startup failed"
-  fi
-  if [ -z "$rollback_error" ]; then
-    wait_for_health || rollback_error="original app health check failed"
-  fi
-  if [ -z "$rollback_error" ]; then
-    compose_files "$old_env" "$COMPOSE_FILE" up -d cron || rollback_error="original cron startup failed"
-  fi
-
-  if [ -n "$rollback_error" ]; then
-    say "Automatic rollback stopped: $rollback_error"
-    return 1
-  fi
-  say "Previous complete environment restored successfully."
-}
-
-migrate_cmd() {
-  umask 077
-  load_env
-  mkdir -p "$TMP_DIR"
-  resolve_full_migration_input "$@"
-
-  local old_env="$TMP_DIR/migrate-old.env"
-  local candidate_env="$TMP_DIR/migrate-candidate.env"
-  local safety_stamp safety_dump safety_env database_volume migration_error rollback_error
-  local current_port candidate_port admin_usernames
-  safety_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  safety_dump="$BACKUP_DIR/migrate-safety-$safety_stamp.dump"
-  safety_env="$BACKUP_DIR/migrate-safety-$safety_stamp.env"
-  current_port="$(port_number "${SUBBOOST_PORT:-}")"
-  candidate_port="$(port_number "$(env_file_value "$RESTORE_ENV" SUBBOOST_PORT)")"
-
-  read_env_file > "$old_env"
-  install -m 600 "$RESTORE_ENV" "$candidate_env"
-  compose up -d db
-  wait_for_database_with_files "$old_env" "$COMPOSE_FILE" || die "Current PostgreSQL service did not become ready."
-  verify_dump_file "$RESTORE_DUMP" || die "Backup database dump is invalid."
-  compose_files "$candidate_env" "$COMPOSE_FILE" config >/dev/null || die "Backup configuration is incompatible with the installed Compose file."
-  if [ "$candidate_port" != "$current_port" ] && ! port_is_free "$candidate_port"; then
-    die "Backup SUBBOOST_PORT is already in use: $candidate_port"
-  fi
-
-  say "Pulling images required by the source environment..."
-  compose_files "$candidate_env" "$COMPOSE_FILE" pull
-  prepare_private_directory "$BACKUP_DIR"
-  say "Creating a complete safety backup of the current environment..."
-  create_verified_dump "$safety_dump" || die "Full migration aborted because the safety database backup failed."
-  sudo_do install -m 600 "$ENV_FILE" "$safety_env"
-
-  database_volume="$(database_volume_name_with_files "$old_env" "$COMPOSE_FILE" || true)"
-  [ -n "$database_volume" ] || die "Unable to identify the SubBoost PostgreSQL data volume."
-  stage_install_file "$candidate_env" "$ENV_FILE" 600 || die "Migration environment could not be staged safely."
-
-  say "Stopping the current App, Cron, and PostgreSQL services..."
-  if ! compose_files "$old_env" "$COMPOSE_FILE" stop cron app db; then
-    sudo_do rm -f "${ENV_FILE}.candidate.$$"
-    compose_files "$old_env" "$COMPOSE_FILE" up -d db app >/dev/null 2>&1 || true
-    compose_files "$old_env" "$COMPOSE_FILE" up -d cron >/dev/null 2>&1 || true
-    die "Full migration aborted because the current services could not be stopped safely."
-  fi
-
-  migration_error=""
-  remove_database_volume_with_files "$old_env" "$COMPOSE_FILE" "$database_volume" || migration_error="current database volume replacement failed"
-  if [ -z "$migration_error" ]; then
-    activate_staged_file "$ENV_FILE" || migration_error="source environment activation failed"
-  fi
-  if [ -z "$migration_error" ]; then
-    compose_files "$candidate_env" "$COMPOSE_FILE" up -d db || migration_error="source database startup failed"
-  fi
-  if [ -z "$migration_error" ]; then
-    wait_for_database_with_files "$candidate_env" "$COMPOSE_FILE" || migration_error="source database readiness check failed"
-  fi
-  if [ -z "$migration_error" ]; then
-    restore_dump_with_files "$RESTORE_DUMP" "$candidate_env" "$COMPOSE_FILE" || migration_error="source database restore failed"
-  fi
-  if [ -z "$migration_error" ]; then
-    load_env
-    compose_files "$candidate_env" "$COMPOSE_FILE" up -d app || migration_error="source app startup failed"
-  fi
-  if [ -z "$migration_error" ]; then
-    wait_for_health || migration_error="source app health check failed"
-  fi
-  if [ -z "$migration_error" ]; then
-    compose_files "$candidate_env" "$COMPOSE_FILE" up -d cron || migration_error="source cron startup failed"
-  fi
-
-  if [ -n "$migration_error" ]; then
-    say "Full migration failed: $migration_error"
-    rollback_error=""
-    rollback_full_migration "$candidate_env" "$old_env" "$safety_dump" "$database_volume" || rollback_error="automatic rollback failed"
-    sudo_do rm -f "${ENV_FILE}.candidate.$$"
-    if [ -n "$rollback_error" ]; then
-      say "Safety dump preserved at: $safety_dump"
-      say "Safety environment preserved at: $safety_env"
-      return 1
-    fi
-    say "Safety backup retained: $safety_dump"
-    return 1
-  fi
-
-  admin_usernames="$(restored_admin_usernames_with_files "$candidate_env" "$COMPOSE_FILE" || true)"
-  say "Full migration completed successfully."
-  say "访问地址: $(env_file_value "$candidate_env" APP_URL)"
-  say "管理员账号: ${admin_usernames:-请使用来源环境管理员账号}"
-  say "管理员密码: 请使用来源环境的管理员密码"
-  say "Safety backup retained: $safety_dump"
-}
-
 manager_data_host_dir() {
   local app_id source
   app_id="$(service_container_id app)"
@@ -1299,7 +1025,7 @@ process_manager_job() {
   id="$(json_get id "$job_file" || true)"
   action="$(json_get action "$job_file" || true)"
   [[ "$id" =~ ^[a-f0-9-]{36}$ ]] || return 1
-  case "$action" in export|restore|migrate) ;; *) return 1 ;; esac
+  case "$action" in export|restore) ;; *) return 1 ;; esac
   manager_write_status "$data_dir" "$id" "$action" running "任务正在执行。"
 
   if [ "$action" = "export" ]; then
@@ -1330,25 +1056,6 @@ process_manager_job() {
   input_env="$(json_get inputEnv "$job_file" || true)"
   job_tmp="$TMP_DIR/job-$id"
   prepare_private_directory "$job_tmp"
-  if [ "$action" = "migrate" ]; then
-    safe_manager_filename "$input_zip" || { sudo_do rm -rf -- "$job_tmp"; manager_write_status "$data_dir" "$id" "$action" failed "备份文件名无效。"; return 1; }
-    set +e
-    output="$(
-      TMP_DIR="$job_tmp"
-      migrate_cmd "$data_dir/uploads/$input_zip" 2>&1
-    )"
-    status=$?
-    set -e
-    sudo_do rm -f -- "$data_dir/uploads/$input_zip"
-    sudo_do rm -rf -- "$job_tmp"
-    if [ "$status" = "0" ]; then
-      manager_write_status "$data_dir" "$id" "$action" succeeded "完整迁移成功，请使用来源环境的访问地址和管理员账号登录。"
-    else
-      manager_write_status "$data_dir" "$id" "$action" failed "${output:-完整迁移失败。}"
-    fi
-    return "$status"
-  fi
-
   if [ -n "$input_zip" ]; then
     safe_manager_filename "$input_zip" || { sudo_do rm -rf -- "$job_tmp"; manager_write_status "$data_dir" "$id" "$action" failed "备份文件名无效。"; return 1; }
     set +e
@@ -1590,8 +1297,7 @@ menu_cmd() {
   say "5) Restore"
   say "6) Restart"
   say "7) Doctor"
-  say "8) Full migration"
-  say "9) Delete SubBoost"
+  say "8) Delete SubBoost"
   say "0) Exit"
   local choice="" restore_path=""
   if [ -t 0 ]; then
@@ -1611,13 +1317,7 @@ menu_cmd() {
       ;;
     6) restart_cmd ;;
     7) doctor_cmd ;;
-    8)
-      printf 'Full backup ZIP path: '
-      IFS= read -r restore_path || restore_path=""
-      [ -n "$restore_path" ] || die "Backup path is required."
-      migrate_cmd "$restore_path"
-      ;;
-    9) delete_cmd ;;
+    8) delete_cmd ;;
     0|"") exit 0 ;;
     *) die "Unknown menu choice: $choice" ;;
   esac
@@ -1633,7 +1333,6 @@ main() {
     logs) logs_cmd "$@" ;;
     backup) backup_cmd "$@" ;;
     restore) restore_cmd "$@" ;;
-    migrate) migrate_cmd "$@" ;;
     restart) restart_cmd ;;
     doctor) doctor_cmd ;;
     agent) agent_cmd ;;
