@@ -174,4 +174,10 @@ describe("self-host update rollback lifecycle", () => {
     expect(installer).toContain('"$SUBBOOST_BIN" agent-install');
     expect(installer).toContain("网页备份管理服务未能自动启动");
   });
+
+  it("shows the backup manager recovery command for every unavailable agent", () => {
+    const card = readFileSync(path.join(publicRoot, "local/src/components/backup-restore-card.tsx"), "utf8");
+    expect(card).toContain("备份管理服务未运行，请执行一次 sudo subboost agent-install。");
+    expect(card).not.toContain("首次升级到支持网页备份的版本后");
+  });
 });

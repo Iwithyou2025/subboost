@@ -10,7 +10,7 @@ type JobState = "queued" | "running" | "succeeded" | "failed";
 
 type JobStatus = {
   id: string;
-  action: "export" | "restore";
+  action: "export" | "restore" | "migrate";
   state: JobState;
   message?: string;
   downloadUrl?: string;
@@ -23,10 +23,11 @@ type BackupRestoreCardProps = {
 const POLL_INTERVAL_MS = 1500;
 
 export function BackupRestoreCard({ enabled }: BackupRestoreCardProps) {
-  const inputRef = React.useRef<HTMLInputElement>(null);
+  const restoreInputRef = React.useRef<HTMLInputElement>(null);
+  const migrateInputRef = React.useRef<HTMLInputElement>(null);
   const [agentAvailable, setAgentAvailable] = React.useState<boolean | null>(null);
   const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
-  const [activeAction, setActiveAction] = React.useState<"export" | "restore" | null>(null);
+  const [activeAction, setActiveAction] = React.useState<"export" | "restore" | "migrate" | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -77,6 +78,8 @@ export function BackupRestoreCard({ enabled }: BackupRestoreCardProps) {
             if (job.action === "export" && job.downloadUrl) {
               setMessage("备份已生成，正在下载。");
               window.location.href = job.downloadUrl;
+            } else if (job.action === "migrate") {
+              setMessage("完整迁移成功，请使用来源环境的访问地址和管理员账号登录。");
             } else {
               setMessage("恢复成功，SubBoost 已重新启动。");
             }
@@ -112,13 +115,18 @@ export function BackupRestoreCard({ enabled }: BackupRestoreCardProps) {
     }
   };
 
-  const startRestore = async (files: File[]) => {
+  const startRestore = async (files: File[], mode: "data" | "full") => {
     if (files.length === 0) return;
-    if (!window.confirm("恢复会覆盖当前数据库内容。系统会先自动创建安全备份，确定继续吗？")) return;
+    const fullMigration = mode === "full";
+    const confirmation = fullMigration
+      ? "完整迁移会替换当前数据库、密钥、端口、访问地址及全部配置。系统会先自动创建安全备份，确定继续吗？"
+      : "恢复会覆盖当前数据库内容。系统会先自动创建安全备份，确定继续吗？";
+    if (!window.confirm(confirmation)) return;
 
     setMessage(null);
-    setActiveAction("restore");
+    setActiveAction(fullMigration ? "migrate" : "restore");
     const formData = new FormData();
+    formData.append("mode", mode);
     for (const file of files) formData.append("files", file);
 
     try {
@@ -128,12 +136,17 @@ export function BackupRestoreCard({ enabled }: BackupRestoreCardProps) {
         throw new Error(typeof body.error === "string" ? body.error : "无法创建恢复任务。");
       }
       setActiveJobId(body.jobId);
-      setMessage("恢复任务已开始，期间网页可能短暂断开，请勿关闭页面。");
+      setMessage(
+        fullMigration
+          ? "完整迁移已开始。若端口或访问地址发生变化，请使用备份中的 APP_URL 重新登录。"
+          : "恢复任务已开始，期间网页可能短暂断开，请勿关闭页面。",
+      );
     } catch (error) {
       setActiveAction(null);
       setMessage(error instanceof Error ? error.message : "无法创建恢复任务。");
     } finally {
-      if (inputRef.current) inputRef.current.value = "";
+      if (fullMigration && migrateInputRef.current) migrateInputRef.current.value = "";
+      if (!fullMigration && restoreInputRef.current) restoreInputRef.current.value = "";
     }
   };
 
@@ -162,33 +175,57 @@ export function BackupRestoreCard({ enabled }: BackupRestoreCardProps) {
 
         <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-medium text-white/90">恢复备份</p>
-            <p className="mt-1 text-xs text-white/45">支持一个 .zip，或同时选择 .dump + .env。</p>
+            <p className="font-medium text-white/90">仅恢复数据</p>
+            <p className="mt-1 text-xs text-white/45">替换数据库数据，保留当前端口、地址、数据库账号及服务配置。</p>
           </div>
           <input
-            ref={inputRef}
+            ref={restoreInputRef}
             type="file"
             className="hidden"
             accept=".zip,.dump,.env"
             multiple
             disabled={!enabled || agentAvailable !== true || busy}
-            onChange={(event) => void startRestore(Array.from(event.currentTarget.files || []))}
+            onChange={(event) => void startRestore(Array.from(event.currentTarget.files || []), "data")}
           />
           <Button
             className="gap-2"
             variant="outline"
             disabled={!enabled || agentAvailable !== true || busy}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => restoreInputRef.current?.click()}
           >
             {activeAction === "restore" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             选择备份
           </Button>
         </div>
 
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium text-white/90">完整迁移</p>
+            <p className="mt-1 text-xs text-white/45">使用完整备份 ZIP 替换数据库、密钥、端口、访问地址及全部配置。</p>
+          </div>
+          <input
+            ref={migrateInputRef}
+            type="file"
+            className="hidden"
+            accept=".zip"
+            disabled={!enabled || agentAvailable !== true || busy}
+            onChange={(event) => void startRestore(Array.from(event.currentTarget.files || []), "full")}
+          />
+          <Button
+            className="gap-2"
+            variant="outline"
+            disabled={!enabled || agentAvailable !== true || busy}
+            onClick={() => migrateInputRef.current?.click()}
+          >
+            {activeAction === "migrate" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            选择完整备份
+          </Button>
+        </div>
+
         {agentAvailable === null && enabled && <p className="text-xs text-white/40">正在检查备份管理服务…</p>}
         {unavailable && (
           <p className="text-xs text-amber-300">
-            备份管理服务未运行。首次升级到支持网页备份的版本后，请执行一次 sudo subboost agent-install。
+            备份管理服务未运行，请执行一次 sudo subboost agent-install。
           </p>
         )}
         {message && <p className="text-xs text-white/60">{message}</p>}

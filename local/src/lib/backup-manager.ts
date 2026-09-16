@@ -6,8 +6,9 @@ export const MANAGER_DATA_CONTAINER_DIR = "/var/lib/subboost-manager";
 export const MANAGER_AGENT_HEARTBEAT_MAX_AGE_MS = 15_000;
 export const MAX_BACKUP_UPLOAD_BYTES = 256 * 1024 * 1024;
 
-export type BackupJobAction = "export" | "restore";
+export type BackupJobAction = "export" | "restore" | "migrate";
 export type BackupJobState = "queued" | "running" | "succeeded" | "failed";
+export type RestoreMode = "data" | "full";
 
 export type BackupJobStatus = {
   id: string;
@@ -114,16 +115,20 @@ function classifyRestoreFiles(files: UploadFile[]): RestoreFileSelection {
   throw new Error("请选择一个 .zip，或同时选择一个 .dump 和一个 .env 文件。");
 }
 
-export async function createRestoreJob(requestedBy: string, files: UploadFile[]): Promise<string> {
+export async function createRestoreJob(requestedBy: string, files: UploadFile[], mode: RestoreMode = "data"): Promise<string> {
   const totalBytes = files.reduce((sum, file) => sum + Math.max(0, file.size), 0);
   if (totalBytes <= 0) throw new Error("备份文件不能为空。");
   if (totalBytes > MAX_BACKUP_UPLOAD_BYTES) throw new Error("备份文件总大小不能超过 256 MiB。");
 
   const selection = classifyRestoreFiles(files);
+  if (mode === "full" && selection.kind !== "zip") {
+    throw new Error("完整迁移仅支持完整备份 ZIP 文件。");
+  }
   const paths = await ensureManagerDirectories();
   const id = randomUUID();
   const createdAt = new Date().toISOString();
-  const request: BackupJobRequest = { id, action: "restore", requestedBy, createdAt };
+  const action: BackupJobAction = mode === "full" ? "migrate" : "restore";
+  const request: BackupJobRequest = { id, action, requestedBy, createdAt };
 
   if (selection.kind === "zip") {
     const fileName = `${id}.zip`;
@@ -138,7 +143,7 @@ export async function createRestoreJob(requestedBy: string, files: UploadFile[])
     request.inputEnv = envName;
   }
 
-  const status: BackupJobStatus = { id, action: "restore", state: "queued", updatedAt: createdAt };
+  const status: BackupJobStatus = { id, action, state: "queued", updatedAt: createdAt };
   await writeJsonAtomic(path.join(paths.status, `${id}.json`), status);
   await writeJsonAtomic(path.join(paths.jobs, `${id}.json`), request);
   return id;
@@ -150,7 +155,7 @@ export async function readBackupJobStatus(id: string): Promise<BackupJobStatus |
     const parsed = JSON.parse(await readFile(path.join(backupManagerPaths().status, `${id}.json`), "utf8")) as Partial<BackupJobStatus>;
     if (
       parsed.id !== id ||
-      (parsed.action !== "export" && parsed.action !== "restore") ||
+      (parsed.action !== "export" && parsed.action !== "restore" && parsed.action !== "migrate") ||
       !["queued", "running", "succeeded", "failed"].includes(String(parsed.state)) ||
       typeof parsed.updatedAt !== "string"
     ) {

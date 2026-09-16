@@ -104,7 +104,7 @@ describe("BackupRestoreCard", () => {
     const view = renderCard({}, false);
     const buttons = elements(view.tree).filter((element) => element.type === "button");
     expect(textOf(view.tree)).toContain("备份与恢复");
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(3);
     expect(buttons.every((button) => button.props.disabled)).toBe(true);
     const cleanup = view.effects[0]();
     expect(view.setters[0]).toHaveBeenCalledWith(null);
@@ -204,6 +204,28 @@ describe("BackupRestoreCard", () => {
     expect(view.setters[3]).toHaveBeenCalledWith("bad restore");
   });
 
+  it("uploads full migrations as a distinct confirmed mode", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ jobId: "migration-job" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const view = renderCard({ 0: true });
+    const nodes = elements(view.tree);
+    const migrateButton = nodes.find((element) => element.type === "button" && textOf(element).includes("选择完整备份"));
+    migrateButton?.props.onClick();
+    expect(view.ref.current?.click).toHaveBeenCalled();
+
+    const inputs = nodes.filter((element) => element.type === "input");
+    const migrationInput = inputs.find((element) => element.props.accept === ".zip");
+    await migrationInput?.props.onChange({ currentTarget: { files: [new File(["zip"], "complete.zip")] } });
+    await flush();
+
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("替换当前数据库、密钥、端口、访问地址及全部配置"));
+    const request = fetchMock.mock.calls.find(([url]) => url === "/api/backups/restore")?.[1] as RequestInit;
+    expect((request.body as FormData).get("mode")).toBe("full");
+    expect(view.setters[2]).toHaveBeenCalledWith("migrate");
+    expect(view.setters[1]).toHaveBeenCalledWith("migration-job");
+    expect(view.setters[3]).toHaveBeenCalledWith(expect.stringContaining("APP_URL"));
+  });
+
   it("polls failed, completed export, and completed restore jobs", async () => {
     const setTimeoutMock = vi.fn(() => 11 as unknown as ReturnType<typeof setTimeout>);
     const clearTimeoutMock = vi.fn();
@@ -233,6 +255,13 @@ describe("BackupRestoreCard", () => {
     view.effects[1]();
     await flush();
     expect(view.setters[3]).toHaveBeenCalledWith("恢复成功，SubBoost 已重新启动。");
+
+    fetchMock = vi.fn(async () => jsonResponse({ id: "job", action: "migrate", state: "succeeded" }));
+    vi.stubGlobal("fetch", fetchMock);
+    view = renderCard({ 0: true, 1: "job", 2: "migrate" });
+    view.effects[1]();
+    await flush();
+    expect(view.setters[3]).toHaveBeenCalledWith("完整迁移成功，请使用来源环境的访问地址和管理员账号登录。");
   });
 
   it("keeps polling through non-success responses and temporary disconnects", async () => {

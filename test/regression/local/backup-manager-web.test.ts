@@ -107,6 +107,15 @@ describe("web backup manager", () => {
     const pairRequest = JSON.parse(await readFile(path.join(paths.jobs, `${pairId}.json`), "utf8"));
     expect(pairRequest).toMatchObject({ inputDump: `${pairId}.dump`, inputEnv: `${pairId}.env` });
 
+    const migrationId = await createRestoreJob("admin-3", [namedFile("complete.zip", "zip-data")], "full");
+    const migrationRequest = JSON.parse(await readFile(path.join(paths.jobs, `${migrationId}.json`), "utf8"));
+    expect(migrationRequest).toMatchObject({ id: migrationId, action: "migrate", inputZip: `${migrationId}.zip` });
+    await expect(readBackupJobStatus(migrationId)).resolves.toMatchObject({ action: "migrate", state: "queued" });
+
+    await expect(
+      createRestoreJob("admin", [namedFile("one.dump", "x"), namedFile("one.env", "ENCRYPTION_KEY=key")], "full"),
+    ).rejects.toThrow("完整迁移仅支持完整备份 ZIP");
+
     await expect(createRestoreJob("admin", [])).rejects.toThrow("不能为空");
     await expect(createRestoreJob("admin", [namedFile("bad.txt", "x")])).rejects.toThrow("请选择一个 .zip");
     await expect(createRestoreJob("admin", [namedFile("one.dump", "x"), namedFile("two.dump", "y")])).rejects.toThrow(
@@ -214,6 +223,23 @@ describe("web backup manager", () => {
     expect(
       (await jsonResponse(await restorePOST(new Request("https://local.test/api/backups/restore", { method: "POST", body: pair })))).status,
     ).toBe(202);
+
+    const migration = new FormData();
+    migration.append("mode", "full");
+    migration.append("files", namedFile("complete.zip", "zip-data"));
+    const migrationResponse = await jsonResponse(
+      await restorePOST(new Request("https://local.test/api/backups/restore", { method: "POST", body: migration })),
+    );
+    expect(migrationResponse.status).toBe(202);
+    const migrationId = (migrationResponse.body as { jobId: string }).jobId;
+    await expect(readBackupJobStatus(migrationId)).resolves.toMatchObject({ action: "migrate", state: "queued" });
+
+    const invalidMode = new FormData();
+    invalidMode.append("mode", "replace");
+    invalidMode.append("files", namedFile("complete.zip", "zip-data"));
+    expect(
+      await jsonResponse(await restorePOST(new Request("https://local.test/api/backups/restore", { method: "POST", body: invalidMode }))),
+    ).toEqual({ status: 400, body: { error: "Invalid restore mode.", code: "VALIDATION_ERROR" } });
 
     const empty = new FormData();
     expect(
