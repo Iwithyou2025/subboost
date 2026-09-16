@@ -1,24 +1,18 @@
-# SubBoost v1.1.0
+## v1.2.0
 
-## 新增
+### 备份与迁移改进
 
-* 网页端备份与恢复功能
-* 支持导出完整 ZIP 备份
-* 支持通过 ZIP 或 `.dump + .env` 恢复数据
-* 恢复前自动创建安全备份
-* 恢复失败时自动回滚
-* 新增备份管理服务
-
-## 升级
+* 完整备份现包含数据库及全部运行配置。
+* 保留“仅恢复数据”模式，不影响当前端口、地址和服务配置。
+* 新增已有环境“完整迁移”，支持替换数据库、密钥、端口及全部配置，并在失败时自动回滚。
+* 支持全新服务器直接迁移：
 
 ```bash
-sudo subboost update
+sudo bash install.sh --restore /path/to/backup.zip
 ```
 
-如果网页提示备份管理服务未运行：
+* 已有环境也可通过网页或命令完整迁移：
 
 ```bash
-sudo subboost agent-install
+sudo subboost migrate /path/to/backup.zip
 ```
-
-> 恢复会覆盖当前数据库，请提前保管好备份文件。

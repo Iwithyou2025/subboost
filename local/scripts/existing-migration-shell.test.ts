@@ -105,6 +105,37 @@ PY
 `;
 
 describe("existing-environment full migration", () => {
+  it("waits through PostgreSQL's temporary init server before restoring", () => {
+    const result = runBash(String.raw`
+      set -Eeuo pipefail
+      work="$(mktemp -d)"
+      trap 'rm -rf "$work"' EXIT
+      cat > "$work/source.env" <<'ENV'
+POSTGRES_DB=subboost
+POSTGRES_USER=subboost
+ENV
+      : > "$work/docker-compose.yml"
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      source local/scripts/subboost.sh
+      checks=0
+      sleep() { :; }
+      compose_files() {
+        checks=$((checks + 1))
+        case "$checks" in
+          1|3|4|5) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      wait_for_database_with_files "$work/source.env" "$work/docker-compose.yml"
+      printf 'checks=%s\n' "$checks"
+      [ "$checks" -eq 5 ]
+    `);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(result.stdout).toContain("checks=5");
+  });
+
   it("replaces the database and complete environment while retaining a safety backup", () => {
     const result = runBash(String.raw`
       set -Eeuo pipefail

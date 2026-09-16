@@ -292,15 +292,24 @@ restore_dump_with_files() {
 wait_for_database_with_files() {
   local env_file="$1"
   local compose_file="$2"
-  local db_user db_name index
+  local db_user db_name index stable_checks
   db_user="$(env_file_value "$env_file" POSTGRES_USER)"
   db_name="$(env_file_value "$env_file" POSTGRES_DB)"
   [ -n "$db_user" ] && [ -n "$db_name" ] || return 1
-  for index in $(seq 1 60); do
+  # The PostgreSQL image briefly accepts connections during initdb, stops that
+  # temporary server, and then starts the final server. Require a stable-ready
+  # window so a restore cannot begin during that shutdown gap.
+  stable_checks=0
+  for index in $(seq 1 120); do
     if compose_files "$env_file" "$compose_file" exec -T db pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
-      return 0
+      stable_checks=$((stable_checks + 1))
+      if [ "$stable_checks" -ge 3 ]; then
+        return 0
+      fi
+    else
+      stable_checks=0
     fi
-    sleep 2
+    sleep 1
   done
   return 1
 }

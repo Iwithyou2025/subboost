@@ -18,6 +18,37 @@ function runBash(script: string) {
 }
 
 describe("fresh-install restore migration", () => {
+  it("waits through PostgreSQL's temporary init server before restoring", () => {
+    const result = runBash(String.raw`
+      set -Eeuo pipefail
+      work="$(mktemp -d)"
+      trap 'rm -rf "$work"' EXIT
+      cat > "$work/.env" <<'ENV'
+POSTGRES_DB=subboost
+POSTGRES_USER=subboost
+ENV
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$work"
+      source local/scripts/install.sh
+      checks=0
+      sleep() { :; }
+      compose() {
+        checks=$((checks + 1))
+        case "$checks" in
+          1|3|4|5) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      wait_for_database
+      printf 'checks=%s\n' "$checks"
+      [ "$checks" -eq 5 ]
+    `);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(result.stdout).toContain("checks=5");
+  });
+
   it("reports every missing required setting before Docker installation", () => {
     const result = runBash(String.raw`
       set -Eeuo pipefail

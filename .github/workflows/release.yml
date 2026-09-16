@@ -207,7 +207,7 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             --title "SubBoost ${GITHUB_REF_NAME}" \
             --notes-file docs/release-notes.md \
-            --draft \
+            --latest \  
             dist/release-assets/release.json \
             dist/release-assets/install.sh \
             dist/release-assets/docker-compose.image.yml \
