@@ -944,12 +944,17 @@ logs_cmd() {
   compose logs -f --tail="${SUBBOOST_LOG_TAIL:-200}" "$@"
 }
 
+backup_filename_stamp() {
+  date -u +%Y-%m-%d-%H-%M-%S
+}
+
 backup_zip_cmd() {
   local output="${1:-}"
   umask 077
-  local stamp work_dir manifest
+  local stamp archive_stamp work_dir manifest
   load_env
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  archive_stamp="$(backup_filename_stamp)"
   create_backup_pair "$stamp"
   prune_backups
   work_dir="$TMP_DIR/backup-zip-$stamp"
@@ -958,7 +963,7 @@ backup_zip_cmd() {
   sudo_do cp "$BACKUP_ENV_OUT" "$work_dir/$(basename "$BACKUP_ENV_OUT")"
   manifest="$work_dir/manifest.json"
   write_backup_manifest "$manifest" "$(basename "$BACKUP_DB_OUT")" "$(basename "$BACKUP_ENV_OUT")"
-  if [ -z "$output" ]; then output="$BACKUP_DIR/subboost-backup-$stamp.zip"; fi
+  if [ -z "$output" ]; then output="$BACKUP_DIR/subboost-backup-$archive_stamp.zip"; fi
   output="$(cd "$(dirname "$output")" 2>/dev/null && pwd)/$(basename "$output")" || die "Backup ZIP output directory does not exist."
   create_zip_from_directory "$work_dir" "$output" "$(basename "$BACKUP_DB_OUT")" "$(basename "$BACKUP_ENV_OUT")" manifest.json
   sudo_do chmod 600 "$output"
@@ -1298,7 +1303,7 @@ process_manager_job() {
   manager_write_status "$data_dir" "$id" "$action" running "任务正在执行。"
 
   if [ "$action" = "export" ]; then
-    output_file="subboost-backup-$(date -u +%Y%m%dT%H%M%SZ)-$id.zip"
+    output_file="subboost-backup-$(backup_filename_stamp).zip"
     output_path="$data_dir/exports/$output_file"
     job_tmp="$TMP_DIR/job-$id"
     prepare_private_directory "$job_tmp"

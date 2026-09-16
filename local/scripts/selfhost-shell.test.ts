@@ -944,6 +944,37 @@ ENV
     expect(result.stdout).toContain("dump=subboost-test.dump env=subboost-test.env");
   });
 
+  it("uses a readable date and time for default ZIP backup filenames", () => {
+    const result = runBash(`
+      set -Eeuo pipefail
+      home="$(mktemp -d)"
+      trap 'rm -rf "$home"' EXIT
+      mkdir -p "$home/backups"
+      printf 'DUMMY=value\\n' > "$home/.env"
+      : > "$home/docker-compose.yml"
+      export SUBBOOST_SCRIPT_SOURCE_ONLY=1
+      export SUBBOOST_HOME="$home"
+      source local/scripts/subboost.sh
+      sudo_do() { "$@"; }
+      TMP_DIR="$home/tmp"
+      backup_filename_stamp() { printf '2026-09-16-11-27-57\\n'; }
+      create_backup_pair() {
+        BACKUP_DB_OUT="$home/backups/database.dump"
+        BACKUP_ENV_OUT="$home/backups/subboost.env"
+        printf 'dump' > "$BACKUP_DB_OUT"
+        printf 'env' > "$BACKUP_ENV_OUT"
+      }
+      prune_backups() { :; }
+      create_zip_from_directory() { printf 'zip' > "$2"; }
+
+      backup_zip_cmd
+      [ -f "$home/backups/subboost-backup-2026-09-16-11-27-57.zip" ]
+    `);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(result.stdout).toContain("subboost-backup-2026-09-16-11-27-57.zip");
+  });
+
   it("processes web export and restore jobs without accepting arbitrary paths", () => {
     const script = `
       set -Eeuo pipefail
@@ -958,12 +989,15 @@ ENV
       mkdir -p "$data/jobs" "$data/uploads" "$data/exports" "$data/status"
       id=123e4567-e89b-12d3-a456-426614174000
       backup_zip_cmd() { printf 'zip' > "$1"; }
+      backup_filename_stamp() { printf '2026-09-16-11-27-57\\n'; }
       restore_cmd() { printf '%s %s\\n' "$*" > "$home/restore-args"; return 0; }
       migrate_cmd() { printf '%s\\n' "$*" > "$home/migrate-args"; return 0; }
 
       printf '{"id":"%s","action":"export"}\\n' "$id" > "$home/export.json"
       process_manager_job "$data" "$home/export.json"
       cat "$data/status/$id.json"
+      [ -f "$data/exports/subboost-backup-2026-09-16-11-27-57.zip" ]
+      grep -Fq '"outputFile":"subboost-backup-2026-09-16-11-27-57.zip"' "$data/status/$id.json"
       [ ! -e "$TMP_DIR/job-$id" ]
 
       printf 'dump' > "$data/uploads/$id.dump"
