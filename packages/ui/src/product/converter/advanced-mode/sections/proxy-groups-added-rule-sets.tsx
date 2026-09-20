@@ -239,8 +239,9 @@ export function ProxyGroupsAddedRuleSets({
       id: item.id,
       name: item.name,
       behavior: item.behavior,
+      ...(item.format !== undefined ? { format: item.format } : {}),
       path,
-      ...(draft.noResolve ? { noResolve: true } : {}),
+      ...(item.format !== undefined ? { noResolve: draft.noResolve } : draft.noResolve ? { noResolve: true } : {}),
     };
 
     if (item.target.id === target.id && item.target.kind === target.kind) {

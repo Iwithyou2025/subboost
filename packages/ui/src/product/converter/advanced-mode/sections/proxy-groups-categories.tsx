@@ -246,6 +246,7 @@ export function ProxyGroupsCategories() {
         id: ruleSet.id,
         name: ruleSet.name,
         behavior: ruleSet.behavior,
+        ...(ruleSet.format !== undefined ? { format: ruleSet.format } : {}),
         path: ruleSet.path,
         ...(ruleSet.noResolve ? { noResolve: true } : {}),
       });

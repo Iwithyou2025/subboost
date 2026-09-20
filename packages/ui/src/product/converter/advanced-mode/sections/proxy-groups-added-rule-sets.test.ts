@@ -301,6 +301,19 @@ describe("ProxyGroupsAddedRuleSets", () => {
     expect(html).not.toContain("IP");
   });
 
+  it("keeps explicit format/classical and false no-resolve when saving a manual source", () => {
+    const item = { ...moduleItem, format: "yaml", behavior: "classical", path: "https://rules.example/finance.yml" };
+    mocks.ruleSets = [item];
+    renderAdded({
+      0: item.key,
+      1: { path: item.path, targetValue: "module:auto", noResolve: false },
+    });
+    mocks.captures.buttons.find((props: any) => props.title === "保存规则集").onClick();
+    expect(mocks.store.updateModuleRule).toHaveBeenCalledWith("auto", item.id, {
+      id: item.id, name: item.name, path: item.path, format: "yaml", behavior: "classical", noResolve: false,
+    });
+  });
+
   it("renders empty search hints and editing controls", () => {
     mocks.ruleSets = [];
     expect(

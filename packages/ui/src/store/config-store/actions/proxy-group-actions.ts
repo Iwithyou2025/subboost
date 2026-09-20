@@ -7,6 +7,13 @@ import { normalizeProxyGroupAdvancedConfig } from "@subboost/core/proxy-group-ad
 import { PROXY_GROUP_MODULES } from "@subboost/core/generator/proxy-groups";
 import { getModuleRuleOrderKey, isPresetModuleRule } from "@subboost/core/generator/module-rules";
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
+import { buildRuleSetUrlFromPath } from "@subboost/core/rules/rule-model";
+import {
+  canonicalRuleSetUrl,
+  createManualRuleSet,
+  validateManualRuleSetInput,
+  type ManualRuleSetImportResult,
+} from "@subboost/core/rules/manual-rule-set";
 import type { ConfigActions, RuleSetDraft } from "../definitions";
 import type { GetState, SetAndGenerateConfig, SetState } from "../store-types";
 import {
@@ -28,6 +35,7 @@ type ProxyGroupActions = Pick<
   | "restoreHiddenProxyGroup"
   | "updateProxyGroupAdvanced"
   | "addModuleRules"
+  | "importManualRuleSet"
   | "updateModuleRule"
   | "removeModuleRule"
   | "moveModuleRule"
@@ -80,6 +88,54 @@ export function createProxyGroupActions(
   setAndGenerateConfig: SetAndGenerateConfig
 ): ProxyGroupActions {
   return {
+    importManualRuleSet: (input) => {
+      const error = validateManualRuleSetInput(input);
+      if (error) return { ok: false, error };
+      let result: ManualRuleSetImportResult = { ok: false, error: "规则集未导入" };
+      // Validate against the current store and insert/enable/order in one update.
+      // Keep this entry point separate from methods one and two.
+      setAndGenerateConfig((state) => {
+        const targetExists = input.target.kind === "module"
+          ? isBuiltinProxyGroup(input.target.id) && !state.hiddenProxyGroups.includes(input.target.id)
+          : state.customProxyGroups.some((group) => group.id === input.target.id && group.enabled !== false);
+        if (!targetExists) {
+          result = { ok: false, error: "目标代理组不存在、已隐藏或已停用，请重新选择" };
+          return state;
+        }
+        const sourceUrl = canonicalRuleSetUrl(input.url);
+        const enabledProxyGroups = input.target.kind === "module" && !state.enabledProxyGroups.includes(input.target.id)
+          ? [...state.enabledProxyGroups, input.target.id]
+          : state.enabledProxyGroups;
+        const duplicates = state.customRuleSets.some((rule) =>
+          canonicalRuleSetUrl(buildRuleSetUrlFromPath(rule.path, state.ruleProviderBaseUrl)) === sourceUrl
+        );
+        const builtinDuplicate = PROXY_GROUP_MODULES.some((module) =>
+          enabledProxyGroups.includes(module.id) && module.rules.some((rule) =>
+            state.builtinRuleEdits?.[getModuleRuleOrderKey(module.id, rule.id)]?.enabled !== false &&
+            canonicalRuleSetUrl(buildRuleSetUrlFromPath(rule.path, state.ruleProviderBaseUrl)) === sourceUrl
+          )
+        );
+        if (duplicates || builtinDuplicate) {
+          result = { ok: false, error: "此规则集 URL 已存在，请在已有规则集中调整目标代理组" };
+          return state;
+        }
+        const usedIds = new Set([
+          ...state.customRuleSets.map((rule) => rule.id),
+          ...PROXY_GROUP_MODULES.flatMap((module) => module.rules.map((rule) => rule.id)),
+          "cn", // Experimental built-in provider.
+        ]);
+        const rule = createManualRuleSet(input, usedIds);
+        const customRuleSets = [...state.customRuleSets, rule];
+        result = { ok: true, id: rule.id };
+        return {
+          customRuleSets,
+          enabledProxyGroups,
+          ruleOrder: normalizeRuleOrderForState({ ...state, customRuleSets, enabledProxyGroups }),
+        };
+      });
+      return result;
+    },
+
     setProxyGroupOrder: (order: string[]) => {
       const normalized = Array.isArray(order)
         ? order

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ProxyGroupsCustomRules } from "./proxy-groups-custom-rules";
 import { ProxyGroupsRulesLibrary } from "./proxy-groups-rules-library";
+import { ProxyGroupsManualRuleSets } from "./proxy-groups-manual-rule-sets";
 
 export function ProxyGroupsCustomRoutingRules() {
   return (
@@ -17,6 +18,10 @@ export function ProxyGroupsCustomRoutingRules() {
         <div className="border-t border-white/10" />
         <div className="p-2">
           <ProxyGroupsCustomRules />
+        </div>
+        <div className="border-t border-white/10" />
+        <div className="p-2">
+          <ProxyGroupsManualRuleSets />
         </div>
       </div>
     </div>

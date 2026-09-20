@@ -41,6 +41,9 @@ function parseMetaCubeXMrsUrl(url: string): MetaRuleLocation | null {
 }
 
 function convertProvider(provider: RuleProvider): RuleProvider {
+  // An explicitly YAML provider is already in its source format. Conversion
+  // only affects the generated copy, never the persisted customRuleSets.
+  if (provider.format === "yaml") return provider;
   if (typeof provider.url !== "string") return provider;
 
   const location = parseMetaCubeXMrsUrl(provider.url);

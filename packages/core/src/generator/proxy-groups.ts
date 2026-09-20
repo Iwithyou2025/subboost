@@ -26,7 +26,7 @@ import {
   resolveModuleNameFromModule,
 } from "./rules";
 import { getModuleRuleOrderKey } from "./module-rules";
-import { buildRuleSetUrlFromPath } from "@subboost/core/rules/rule-model";
+import { buildRuleSetUrlFromPath, isValidRuleSetFormatBehavior } from "@subboost/core/rules/rule-model";
 import { buildTypedProxyGroup } from "./proxy-group-type";
 
 export { PROXY_GROUP_MODULES };
@@ -544,13 +544,17 @@ export function generateRuleProviders(options: ProxyGroupGenerateOptions): Recor
   for (const ruleSet of customRuleSets) {
     if (customTargetIsDisabled(ruleSet.target, customProxyGroups)) continue;
     if (!ruleSet?.id || !ruleSet.path || providers[ruleSet.id]) continue;
+    if (!isValidRuleSetFormatBehavior(ruleSet.format, ruleSet.behavior)) {
+      throw new Error(`规则集 ${ruleSet.id} 的格式与类型不兼容`);
+    }
+    const format = ruleSet.format ?? "mrs";
     providers[ruleSet.id] = {
       type: "http",
       behavior: ruleSet.behavior,
       url: buildRuleSetUrlFromPath(ruleSet.path, ruleProviderBaseUrl),
-      path: `./ruleset/${ruleSet.id}.mrs`,
+      path: `./ruleset/${ruleSet.id}.${format}`,
       interval: 86400,
-      format: "mrs",
+      format,
     };
   }
 

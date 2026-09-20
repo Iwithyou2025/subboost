@@ -5,6 +5,7 @@ import { resolveProxyGroupAdvancedModeEnabled } from "@subboost/core/proxy-group
 import { normalizeProxyGroupAdvancedConfig } from "@subboost/core/proxy-group-advanced";
 import { normalizeProxyGroupTargetRef } from "@subboost/core/proxy-group-targets";
 import {
+  isValidRuleSetFormatBehavior,
   isValidRuleSetPathOrUrl,
   normalizeRuleModelFromConfig,
   normalizeRuleSetPathInput,
@@ -390,7 +391,10 @@ function parseCustomRuleSets(value: unknown): { ok: true; value: true } | { ok: 
     if (!id.ok) return id;
     const name = parseRequiredString(item.name, "customRuleSets.name");
     if (!name.ok) return name;
-    if (item.behavior !== "domain" && item.behavior !== "ipcidr") return invalid("customRuleSets.behavior 无效");
+    if (item.behavior !== "domain" && item.behavior !== "ipcidr" && item.behavior !== "classical") return invalid("customRuleSets.behavior 无效");
+    if (!isValidRuleSetFormatBehavior(item.format, item.behavior)) {
+      return invalid("customRuleSets.behavior/format 无效，classical 必须使用 YAML");
+    }
     const path = parseRequiredString(item.path, "customRuleSets.path");
     if (!path.ok) return path;
     const normalizedPath = normalizeRuleSetPathInput(path.value);

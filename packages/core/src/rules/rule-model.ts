@@ -55,8 +55,29 @@ export function buildRuleSetUrlFromPath(path: string, baseUrl: string): string {
 }
 
 function normalizeBehavior(value: unknown): RuleSetBehavior | null {
-  if (value === "domain" || value === "ipcidr") return value;
+  if (value === "domain" || value === "ipcidr" || value === "classical") return value;
   return null;
+}
+
+export function isValidRuleSetFormatBehavior(format: unknown, behavior: unknown): boolean {
+  return (format === undefined || format === "mrs" || format === "yaml") &&
+    normalizeBehavior(behavior) !== null &&
+    (behavior !== "classical" || format === "yaml");
+}
+
+// Fail before encrypting/saving new format-aware entries. Do not silently save
+// data that the shared subscription/template loader would subsequently discard.
+export function assertRuleSetFormatsForPersistence(value: unknown): void {
+  if (!Array.isArray(value)) return;
+  for (const item of value) {
+    if (!isRecord(item) || (item.format === undefined && item.behavior !== "classical")) continue;
+    if (!isValidRuleSetFormatBehavior(item.format, item.behavior)) {
+      throw new Error("规则集格式或类型无效：仅支持 MRS/YAML，classical 必须使用 YAML。");
+    }
+    if (!normalizeCustomRuleSet(item)) {
+      throw new Error("规则集缺少有效的 ID、URL 或目标代理组，未保存更改。");
+    }
+  }
 }
 
 function normalizeCustomRuleSet(item: unknown): CustomRuleSet | null {
@@ -67,12 +88,14 @@ function normalizeCustomRuleSet(item: unknown): CustomRuleSet | null {
   const target = normalizeProxyGroupTargetRef(item.target) ?? toTrimmedString(item.target);
   const behavior = normalizeBehavior(item.behavior);
   if (!id || !behavior || !path || !target || !isValidRuleSetPathOrUrl(path)) return null;
+  if (!isValidRuleSetFormatBehavior(item.format, behavior)) return null;
   const name = toTrimmedString(item.name) || id;
   const noResolve = typeof item.noResolve === "boolean" ? item.noResolve : undefined;
   return {
     id,
     name,
     behavior,
+    ...(item.format === "mrs" || item.format === "yaml" ? { format: item.format } : {}),
     path,
     target,
     ...(noResolve !== undefined ? { noResolve } : {}),

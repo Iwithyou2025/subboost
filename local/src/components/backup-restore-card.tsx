@@ -162,7 +162,7 @@ export function BackupRestoreCard({ enabled }: BackupRestoreCardProps) {
 
         <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-medium text-white/90">仅恢复数据</p>
+            <p className="font-medium text-white/90">恢复数据</p>
             <p className="mt-1 text-xs text-white/45">替换数据库数据，保留当前端口、地址、数据库账号及服务配置。</p>
           </div>
           <input

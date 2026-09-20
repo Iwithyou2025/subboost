@@ -3,6 +3,7 @@ import { TEMPLATES } from "@subboost/core/templates";
 import { getBuiltinTemplateId } from "@subboost/core/templates/builtin";
 import { initialState, type ConfigState, type SubBoostTemplateConfig } from "../definitions";
 import { createTemplateActions } from "./template-actions";
+import { buildDefaultSubBoostTemplateConfig } from "@subboost/core/config/defaults";
 
 function createHarness(overrides: Record<string, unknown> = {}) {
   let state = {
@@ -28,6 +29,21 @@ function createHarness(overrides: Record<string, unknown> = {}) {
 }
 
 describe("createTemplateActions", () => {
+  it("preserves manual YAML/classical and MRS fields when applying a synchronized template", () => {
+    const { actions, getState } = createHarness();
+    const config: SubBoostTemplateConfig = {
+      ...buildDefaultSubBoostTemplateConfig("minimal"),
+      customRuleSets: [
+        { id: "manual-yaml", name: "YAML", format: "yaml", behavior: "classical", path: "https://rules.example/custom.yml", noResolve: false, target: { kind: "module", id: "select" } },
+        { id: "manual-mrs", name: "MRS", format: "mrs", behavior: "ipcidr", path: "https://rules.example/ip.mrs", noResolve: false, target: { kind: "module", id: "select" } },
+      ],
+      ruleOrder: ["custom-rule-set:manual-yaml", "custom-rule-set:manual-mrs"],
+    };
+    actions.applyTemplateConfig(JSON.parse(JSON.stringify(config)));
+    expect(getState().customRuleSets).toEqual(config.customRuleSets);
+    expect(getState().ruleOrder.slice(0, 2)).toEqual(config.ruleOrder);
+  });
+
   it("switches builtin templates and resets template-specific edits", () => {
     const { actions, getState } = createHarness({
       enabledProxyGroups: ["select", "ai"],

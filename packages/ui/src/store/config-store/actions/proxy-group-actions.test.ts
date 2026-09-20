@@ -28,6 +28,58 @@ function createHarness(overrides: Record<string, unknown> = {}) {
 }
 
 describe("createProxyGroupActions", () => {
+  it("imports manual YAML atomically, deduplicates URLs and preserves fields when editing/moving", () => {
+    const { actions, getState } = createHarness({ enabledProxyGroups: ["select", "final"], ruleOrder: ["special:match"] });
+    const input = { name: "Finance", url: "https://rules.example/finance.yaml?token=1", format: "yaml" as const, behavior: "classical" as const, target: { kind: "module" as const, id: "auto" } };
+    const result = actions.importManualRuleSet(input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [saved] = getState().customRuleSets;
+    expect(saved).toMatchObject({ id: result.id, format: "yaml", behavior: "classical", path: input.url, target: input.target });
+    expect(getState().enabledProxyGroups).toContain("auto");
+    expect(getState().customRules).toEqual([]);
+    expect(getState().ruleOrder).toContain(`custom-rule-set:${result.id}`);
+    expect(actions.importManualRuleSet(input).ok).toBe(false);
+    expect(actions.importManualRuleSet({ ...input, url: `${input.url}#same-source` }).ok).toBe(false);
+    expect(getState().customRuleSets).toHaveLength(1);
+    actions.updateModuleRule("auto", result.id, { noResolve: true });
+    actions.moveModuleRule("auto", result.id, { kind: "module", id: "select" });
+    actions.updateModuleRule("select", result.id, { noResolve: false });
+    expect(getState().customRuleSets[0]).toMatchObject({ format: "yaml", behavior: "classical", noResolve: false, target: { kind: "module", id: "select" } });
+    actions.moveModuleRule("select", result.id, { kind: "module", id: "ai" });
+    actions.setProxyGroupNameOverride("ai", "Finance Proxy");
+    expect(buildGeneratedRuleEntries({ enabledModules: getState().enabledProxyGroups, customRules: [], customRuleSets: getState().customRuleSets, proxyGroupNameOverrides: getState().proxyGroupNameOverrides }).some((entry) => entry.text === `RULE-SET,${result.id},🤖 Finance Proxy`)).toBe(true);
+    actions.removeModuleRule("ai", result.id);
+    expect(getState().customRuleSets).toEqual([]);
+    expect(getState().ruleOrder).not.toContain(`custom-rule-set:${result.id}`);
+  });
+
+  it("rejects invalid targets and builtin URL conflicts without changing existing state", () => {
+    const { actions, getState } = createHarness({ enabledProxyGroups: ["select", "final"], hiddenProxyGroups: ["auto"], customProxyGroups: [{ id: "disabled", name: "Disabled", emoji: "", groupType: "select", enabled: false }] });
+    const input = { name: "Manual", url: "https://rules.example/ip.mrs", format: "mrs" as const, behavior: "ipcidr" as const, target: { kind: "module" as const, id: "auto" } };
+    const before = structuredClone(getState());
+    expect(actions.importManualRuleSet(input).ok).toBe(false);
+    expect(actions.importManualRuleSet({ ...input, target: { kind: "module", id: "missing" } }).ok).toBe(false);
+    expect(actions.importManualRuleSet({ ...input, target: { kind: "custom", id: "disabled" } }).ok).toBe(false);
+    // Enabling a target must not introduce a second reference to one of its presets.
+    expect(actions.importManualRuleSet({ ...input, url: `${getState().ruleProviderBaseUrl}/geosite/openai.mrs`, behavior: "domain", target: { kind: "module", id: "ai" } }).ok).toBe(false);
+    expect(getState()).toEqual(before);
+  });
+
+  it("keeps same-named sources distinct and preserves explicit false no-resolve for IP rules", () => {
+    const { actions, getState } = createHarness();
+    const input = { name: "google", url: "https://rules.example/ip.mrs", format: "mrs" as const, behavior: "ipcidr" as const, target: { kind: "module" as const, id: "select" } };
+    const first = actions.importManualRuleSet(input);
+    const second = actions.importManualRuleSet({ ...input, url: "https://rules.example/other.mrs" });
+    expect(first.ok && second.ok).toBe(true);
+    const [a, b] = getState().customRuleSets;
+    expect(a.id).not.toBe(b.id);
+    expect(a.id).not.toBe("google");
+    expect(a.noResolve).toBe(true);
+    actions.updateModuleRule("select", a.id, { noResolve: false });
+    expect(getState().customRuleSets[0]).toMatchObject({ format: "mrs", behavior: "ipcidr", noResolve: false });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

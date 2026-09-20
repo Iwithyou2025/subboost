@@ -1,3 +1,4 @@
+import { assertRuleSetFormatsForPersistence } from "@subboost/core/rules/rule-model";
 import { stripImportedNodeControlFieldsFromList } from "@subboost/core/subscription/imported-node-controls";
 import { parseNodeNameFilterConfig } from "@subboost/core/subscription/node-name-filter";
 import { normalizeSubscriptionResponseInfo } from "@subboost/core/subscription/subscription-response-info";
@@ -144,6 +145,8 @@ export function normalizeSubscriptionConfigForPersistence(
   if ("nodeNameFilter" in baseConfig) {
     baseConfig.nodeNameFilter = parseNodeNameFilterConfig(baseConfig.nodeNameFilter);
   }
+
+  assertRuleSetFormatsForPersistence(baseConfig.customRuleSets);
 
   if (typeof input.smartNodeMatchingEnabled === "boolean") {
     baseConfig.smartNodeMatchingEnabled = input.smartNodeMatchingEnabled;

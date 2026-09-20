@@ -1,4 +1,5 @@
 import type { ParsedNode, ParseResult } from "@subboost/core/types/node";
+import type { ManualRuleSetInput, ManualRuleSetImportResult } from "@subboost/core/rules/manual-rule-set";
 import type {
   BuiltinRuleEdits,
   CustomProxyGroup,
@@ -282,6 +283,7 @@ export interface ConfigActions {
 
   // 规则集与内置规则编辑
   addModuleRules: (moduleId: string, rules: RuleSetDraft[]) => void;
+  importManualRuleSet: (input: ManualRuleSetInput) => ManualRuleSetImportResult;
   updateModuleRule: (
     moduleId: string,
     ruleId: string,

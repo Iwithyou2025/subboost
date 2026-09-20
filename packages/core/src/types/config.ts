@@ -224,7 +224,8 @@ export interface CustomRule {
   noResolve?: boolean;
 }
 
-export type RuleSetBehavior = "domain" | "ipcidr";
+export type RuleSetBehavior = "domain" | "ipcidr" | "classical";
+export type RuleSetFormat = "mrs" | "yaml";
 
 export type NodeRegion =
   | "us"
@@ -285,6 +286,8 @@ export interface CustomRuleSet {
   id: string;
   name: string;
   behavior: RuleSetBehavior;
+  // Missing on legacy subscriptions/templates: retain the original MRS behavior.
+  format?: RuleSetFormat;
   path: string;
   target: ProxyGroupRuleTarget;
   noResolve?: boolean;

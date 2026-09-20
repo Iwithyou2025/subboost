@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@subboost/ui/components/ui/dropdown-menu";
 import { cn } from "@subboost/ui/lib/utils";
-import type { CustomRule } from "@subboost/core/types/config";
+import type { CustomRule, RuleSetBehavior } from "@subboost/core/types/config";
 import type {
   CustomRuleListItem,
   ProxyGroupRuleTargetOption,
@@ -122,7 +122,7 @@ export function ProxyGroupRuleSetRow({
   name: string;
   path: string;
   source: Exclude<RuleSource, "manual">;
-  behavior: "domain" | "ipcidr";
+  behavior: RuleSetBehavior;
   noResolve?: boolean;
   state?: ProxyGroupRuleRowState;
   actions?: React.ReactNode;
@@ -302,8 +302,8 @@ function RuleSourceBadge({ source }: { source: RuleSource }) {
   );
 }
 
-function RuleBehaviorBadge({ behavior }: { behavior: "domain" | "ipcidr" }) {
-  return <RuleTextBadge>{behavior === "ipcidr" ? "IP" : "域名"}</RuleTextBadge>;
+function RuleBehaviorBadge({ behavior }: { behavior: RuleSetBehavior }) {
+  return <RuleTextBadge>{behavior === "classical" ? "Classical" : behavior === "ipcidr" ? "IP" : "域名"}</RuleTextBadge>;
 }
 
 function RuleTextBadge({ children }: { children: React.ReactNode }) {
