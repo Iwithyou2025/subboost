@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@subboost/ui/components/ui/toaster";
 import { cn } from "@subboost/ui/lib/utils";
 import { useConfigStore } from "@subboost/ui/store/config-store";
+import { ProxyGroupsAddedRuleSets } from "./proxy-groups-added-rule-sets";
 
 export function ProxyGroupsManualRuleSets() {
   const {
@@ -139,8 +140,13 @@ export function ProxyGroupsManualRuleSets() {
       </div>
       {error && <p role="alert" className="break-words text-[10px] text-red-400">{error}</p>}
       <p className="text-[10px] leading-4 text-white/40">
-        请按规则源说明选择类型。添加后在上方“已添加规则集”中管理，并保存/更新订阅；远程文件由客户端下载。
+        请按规则源说明选择类型。添加后在下方“已添加规则集”中管理，并保存/更新订阅；远程文件由客户端下载。
       </p>
+      <ProxyGroupsAddedRuleSets
+        totalRules={null}
+        source="manual"
+        display="name"
+      />
     </div>
   );
 }

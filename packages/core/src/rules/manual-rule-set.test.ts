@@ -33,14 +33,18 @@ describe("manual remote rule sets", () => {
     expect(validateManualRuleSetInput({ ...input, ...patch } as ManualRuleSetInput)).toBeTruthy();
   });
 
-  it("preserves the URL query, supports extensionless endpoints, and isolates IDs from names", () => {
+  it("preserves the URL query and derives safe, readable, collision-free IDs from names", () => {
     expect(validateManualRuleSetInput(input)).toBeNull();
     expect(validateManualRuleSetInput({ ...input, url: "https://rules.example/download?id=1" })).toBeNull();
     expect(canonicalRuleSetUrl(" HTTPS://RULES.example:443/a.mrs?q=1#fragment ")).toBe("https://rules.example/a.mrs?q=1");
     const a = createManualRuleSet({ ...input, name: "../../google,another-policy" }, new Set(["google"]));
     const b = createManualRuleSet(input, new Set([a.id]));
-    expect(a.id).toMatch(/^manual-rule-set-[A-Za-z0-9-]+$/);
-    expect(b.id).not.toBe(a.id);
+    expect(a.id).toBe("google-another-policy");
+    expect(b.id).toBe("finance");
+    expect(createManualRuleSet({ ...input, name: "giffgaff" }, new Set()).id).toBe("giffgaff");
+    expect(() => createManualRuleSet({ ...input, name: "Giffgaff" }, new Set(["giffgaff"])))
+      .toThrow("规则集名称已存在");
+    expect(createManualRuleSet({ ...input, name: "英国通信" }, new Set()).id).toBe("英国通信");
     expect(a.path).toBe(input.url);
     expect(a).toMatchObject({ format: "yaml", behavior: "classical", noResolve: false });
   });

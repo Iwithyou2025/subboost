@@ -656,6 +656,7 @@ export function ProxyGroupsRulesLibrary() {
         <ProxyGroupsAddedRuleSets
           showSearchHint={!ruleSearchKeyword && selectedRules.length === 0}
           totalRules={totalRules}
+          source="library"
         />
       </div>
     </div>

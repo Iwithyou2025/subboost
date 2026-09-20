@@ -211,7 +211,10 @@ const customItem = {
 
 function renderAdded(
   overrides: Record<number, unknown> = {},
-  props = { showSearchHint: false, totalRules: null as number | null },
+  props: React.ComponentProps<typeof ProxyGroupsAddedRuleSets> = {
+    showSearchHint: false,
+    totalRules: null,
+  },
   options: { runEffects?: boolean } = {},
 ) {
   stateMock.enabled = true;
@@ -312,6 +315,30 @@ describe("ProxyGroupsAddedRuleSets", () => {
     expect(mocks.store.updateModuleRule).toHaveBeenCalledWith("auto", item.id, {
       id: item.id, name: item.name, path: item.path, format: "yaml", behavior: "classical", noResolve: false,
     });
+  });
+
+  it("separates library and manual lists and shows the entered manual name", () => {
+    const manualItem = {
+      ...moduleItem,
+      key: "custom-rule-set:giffgaff",
+      id: "giffgaff",
+      name: "giffgaff",
+      format: "yaml",
+      behavior: "classical",
+      path: "https://rules.example/giffgaff.yaml",
+    };
+    mocks.ruleSets = [moduleItem, manualItem];
+    const libraryHtml = renderAdded({}, { totalRules: null, source: "library" }).html;
+    expect(libraryHtml).toContain("geosite/rule-a");
+    expect(libraryHtml).not.toContain("giffgaff");
+    const manualHtml = renderAdded({}, {
+      totalRules: null,
+      source: "manual",
+      display: "name",
+    }).html;
+    expect(manualHtml).toContain("giffgaff");
+    expect(manualHtml).not.toContain("geosite/rule-a");
+    expect(mocks.captures.buttons.some((props: any) => props["aria-label"] === "删除规则集")).toBe(true);
   });
 
   it("renders empty search hints and editing controls", () => {

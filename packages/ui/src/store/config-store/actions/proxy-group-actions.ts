@@ -11,6 +11,8 @@ import { buildRuleSetUrlFromPath } from "@subboost/core/rules/rule-model";
 import {
   canonicalRuleSetUrl,
   createManualRuleSet,
+  createManualRuleSetId,
+  MANUAL_RULE_SET_NAME_CONFLICT_ERROR,
   validateManualRuleSetInput,
   type ManualRuleSetImportResult,
 } from "@subboost/core/rules/manual-rule-set";
@@ -21,6 +23,7 @@ import {
   findBuiltinRuleEditKeyByTarget,
   normalizeRuleOrderForState,
   normalizeRuleSetDraft,
+  placeManualRuleSetFirst,
   resolveMoveTargetName,
   resolveRuleSetContainerTargetName,
   retargetBuiltinRuleEdits,
@@ -106,6 +109,18 @@ export function createProxyGroupActions(
         const enabledProxyGroups = input.target.kind === "module" && !state.enabledProxyGroups.includes(input.target.id)
           ? [...state.enabledProxyGroups, input.target.id]
           : state.enabledProxyGroups;
+        const usedIds = new Set([
+          ...state.customRuleSets.flatMap((rule) => [
+            rule.id.toLowerCase(),
+            createManualRuleSetId(rule.name),
+          ]),
+          ...PROXY_GROUP_MODULES.flatMap((module) => module.rules.map((rule) => rule.id.toLowerCase())),
+          "cn", // Experimental built-in provider.
+        ]);
+        if (usedIds.has(createManualRuleSetId(input.name))) {
+          result = { ok: false, error: MANUAL_RULE_SET_NAME_CONFLICT_ERROR };
+          return state;
+        }
         const duplicates = state.customRuleSets.some((rule) =>
           canonicalRuleSetUrl(buildRuleSetUrlFromPath(rule.path, state.ruleProviderBaseUrl)) === sourceUrl
         );
@@ -119,18 +134,16 @@ export function createProxyGroupActions(
           result = { ok: false, error: "此规则集 URL 已存在，请在已有规则集中调整目标代理组" };
           return state;
         }
-        const usedIds = new Set([
-          ...state.customRuleSets.map((rule) => rule.id),
-          ...PROXY_GROUP_MODULES.flatMap((module) => module.rules.map((rule) => rule.id)),
-          "cn", // Experimental built-in provider.
-        ]);
         const rule = createManualRuleSet(input, usedIds);
-        const customRuleSets = [...state.customRuleSets, rule];
+        const customRuleSets = [rule, ...state.customRuleSets];
         result = { ok: true, id: rule.id };
         return {
           customRuleSets,
           enabledProxyGroups,
-          ruleOrder: normalizeRuleOrderForState({ ...state, customRuleSets, enabledProxyGroups }),
+          ruleOrder: placeManualRuleSetFirst(
+            { ...state, customRuleSets, enabledProxyGroups },
+            rule.id,
+          ),
         };
       });
       return result;

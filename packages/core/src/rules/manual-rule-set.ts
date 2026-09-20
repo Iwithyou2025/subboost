@@ -10,6 +10,7 @@ export type ManualRuleSetInput = {
 };
 
 export type ManualRuleSetImportResult = { ok: true; id: string } | { ok: false; error: string };
+export const MANUAL_RULE_SET_NAME_CONFLICT_ERROR = "规则集名称已存在或与内置规则集冲突，请更换名称";
 
 export function canonicalRuleSetUrl(value: string): string | null {
   try {
@@ -47,11 +48,19 @@ export function validateManualRuleSetInput(input: ManualRuleSetInput): string | 
   return null;
 }
 
+export function createManualRuleSetId(name: string): string {
+  const normalizedName = name
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}_-]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return Array.from(normalizedName).slice(0, 64).join("") || "manual-rule-set";
+}
+
 export function createManualRuleSet(input: ManualRuleSetInput, usedIds: Set<string>): CustomRuleSet {
-  const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  const baseId = `manual-rule-set-${suffix}`;
-  let id = baseId;
-  for (let index = 2; usedIds.has(id); index += 1) id = `${baseId}-${index}`;
+  const id = createManualRuleSetId(input.name);
+  if (usedIds.has(id)) throw new Error(MANUAL_RULE_SET_NAME_CONFLICT_ERROR);
   return {
     id,
     name: input.name.trim(),

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createManualRuleSet, type ManualRuleSetInput } from "@subboost/core/rules/manual-rule-set";
 
-const mocks = vi.hoisted(() => ({ store: {} as any, inputs: [] as any[], selects: [] as any[], buttons: [] as any[], toast: vi.fn() }));
+const mocks = vi.hoisted(() => ({ store: {} as any, inputs: [] as any[], selects: [] as any[], buttons: [] as any[], addedRuleSets: [] as any[], toast: vi.fn() }));
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as any[] }));
 vi.mock("react", async (original) => ({
   ...await original<typeof import("react")>(),
@@ -30,6 +30,12 @@ vi.mock("@subboost/ui/components/ui/select", () => ({
 }));
 vi.mock("./proxy-groups-rules-library", () => ({ ProxyGroupsRulesLibrary: () => React.createElement("div", null, "方法一：搜索规则集") }));
 vi.mock("./proxy-groups-custom-rules", () => ({ ProxyGroupsCustomRules: () => React.createElement("div", null, "方法二：手动添加规则") }));
+vi.mock("./proxy-groups-added-rule-sets", () => ({
+  ProxyGroupsAddedRuleSets: (props: any) => {
+    mocks.addedRuleSets.push(props);
+    return React.createElement("div", null, "已添加规则集");
+  },
+}));
 
 import { ProxyGroupsManualRuleSets } from "./proxy-groups-manual-rule-sets";
 import { ProxyGroupsCustomRoutingRules } from "./proxy-groups-custom-routing-rules";
@@ -39,6 +45,7 @@ function render(component = ProxyGroupsManualRuleSets) {
   mocks.inputs = [];
   mocks.selects = [];
   mocks.buttons = [];
+  mocks.addedRuleSets = [];
   return renderToStaticMarkup(React.createElement(component));
 }
 function fill() {
@@ -70,6 +77,8 @@ describe("ProxyGroupsManualRuleSets", () => {
     expect(html.indexOf("方法一")).toBeLessThan(html.indexOf("方法二"));
     expect(html.indexOf("方法二")).toBeLessThan(html.indexOf("方法三：手动添加规则集"));
     expect(html).toContain('aria-label="导入此源"');
+    expect(html.indexOf("方法三：手动添加规则集")).toBeLessThan(html.indexOf("已添加规则集"));
+    expect(mocks.addedRuleSets[0]).toEqual({ totalRules: null, source: "manual", display: "name" });
     expect(mocks.buttons[0].disabled).toBe(true);
     expect(mocks.inputs[1].className).toContain("h-7 border-white/10 bg-white/5");
     expect(html).not.toContain('data-value="classical"');
@@ -105,13 +114,16 @@ describe("ProxyGroupsManualRuleSets", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("renders validation errors and does not claim success for duplicates", () => {
+  it("shows a name-conflict prompt and does not claim success", () => {
     fill();
-    mocks.store.importManualRuleSet.mockReturnValue({ ok: false, error: "此规则集 URL 已存在" });
+    mocks.store.importManualRuleSet.mockReturnValue({
+      ok: false,
+      error: "规则集名称已存在或与内置规则集冲突，请更换名称",
+    });
     mocks.buttons[0].onClick();
     const html = render();
     expect(html).toContain('role="alert"');
-    expect(html).toContain("此规则集 URL 已存在");
+    expect(html).toContain("规则集名称已存在或与内置规则集冲突，请更换名称");
     expect(mocks.toast).not.toHaveBeenCalled();
     expect(mocks.buttons[0].className).not.toContain("text-green-400");
   });

@@ -34,6 +34,7 @@ describe("createProxyGroupActions", () => {
     const result = actions.importManualRuleSet(input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    expect(result.id).toBe("finance");
     const [saved] = getState().customRuleSets;
     expect(saved).toMatchObject({ id: result.id, format: "yaml", behavior: "classical", path: input.url, target: input.target });
     expect(getState().enabledProxyGroups).toContain("auto");
@@ -66,18 +67,75 @@ describe("createProxyGroupActions", () => {
     expect(getState()).toEqual(before);
   });
 
-  it("keeps same-named sources distinct and preserves explicit false no-resolve for IP rules", () => {
+  it("rejects same-named sources and preserves explicit false no-resolve for IP rules", () => {
     const { actions, getState } = createHarness();
-    const input = { name: "google", url: "https://rules.example/ip.mrs", format: "mrs" as const, behavior: "ipcidr" as const, target: { kind: "module" as const, id: "select" } };
+    const input = { name: "giffgaff-ip", url: "https://rules.example/ip.mrs", format: "mrs" as const, behavior: "ipcidr" as const, target: { kind: "module" as const, id: "select" } };
     const first = actions.importManualRuleSet(input);
-    const second = actions.importManualRuleSet({ ...input, url: "https://rules.example/other.mrs" });
-    expect(first.ok && second.ok).toBe(true);
-    const [a, b] = getState().customRuleSets;
-    expect(a.id).not.toBe(b.id);
-    expect(a.id).not.toBe("google");
+    const second = actions.importManualRuleSet({ ...input, name: "Giffgaff IP", url: "https://rules.example/other.mrs" });
+    expect(first).toEqual({ ok: true, id: "giffgaff-ip" });
+    expect(second).toEqual({
+      ok: false,
+      error: "规则集名称已存在或与内置规则集冲突，请更换名称",
+    });
+    expect(getState().customRuleSets).toHaveLength(1);
+    const a = getState().customRuleSets.find((rule) => rule.path === input.url)!;
+    expect(a.id).toBe("giffgaff-ip");
     expect(a.noResolve).toBe(true);
     actions.updateModuleRule("select", a.id, { noResolve: false });
-    expect(getState().customRuleSets[0]).toMatchObject({ format: "mrs", behavior: "ipcidr", noResolve: false });
+    expect(getState().customRuleSets.find((rule) => rule.id === a.id))
+      .toMatchObject({ format: "mrs", behavior: "ipcidr", noResolve: false });
+  });
+
+  it("rejects a manual name that conflicts with an existing built-in provider ID", () => {
+    const { actions, getState } = createHarness();
+    const before = structuredClone(getState());
+    expect(actions.importManualRuleSet({
+      name: "OpenAI",
+      url: "https://rules.example/not-openai.yaml",
+      format: "yaml",
+      behavior: "domain",
+      target: { kind: "module", id: "select" },
+    })).toEqual({
+      ok: false,
+      error: "规则集名称已存在或与内置规则集冲突，请更换名称",
+    });
+    expect(getState()).toEqual(before);
+  });
+
+  it("uses the entered name as the provider ID and places a manual source before every RULE-SET", () => {
+    const { actions, getState } = createHarness({
+      enabledProxyGroups: ["select", "crypto", "final"],
+      customRules: [
+        { id: "keyword", type: "DOMAIN-KEYWORD", value: "mcc234", target: { kind: "module", id: "select" } },
+      ],
+      customRuleSets: [
+        { id: "bybit", name: "Bybit", behavior: "domain", path: "geosite/bybit.mrs", target: { kind: "module", id: "crypto" } },
+        { id: "schwab", name: "Schwab", behavior: "domain", path: "geosite/schwab.mrs", target: { kind: "module", id: "select" } },
+      ],
+      ruleOrder: ["custom-rule:keyword", "custom-rule-set:bybit", "custom-rule-set:schwab"],
+    });
+    const result = actions.importManualRuleSet({
+      name: "giffgaff",
+      url: "https://rules.example/giffgaff.yaml",
+      format: "yaml",
+      behavior: "classical",
+      target: { kind: "module", id: "select" },
+    });
+    expect(result).toEqual({ ok: true, id: "giffgaff" });
+    const state = getState();
+    const entries = buildGeneratedRuleEntries({
+      enabledModules: state.enabledProxyGroups,
+      customRules: state.customRules,
+      customRuleSets: state.customRuleSets,
+      customProxyGroups: state.customProxyGroups,
+      builtinRuleEdits: state.builtinRuleEdits,
+      proxyGroupNameOverrides: state.proxyGroupNameOverrides,
+      ruleOrder: state.ruleOrder,
+    });
+    expect(entries.filter((entry) => entry.text.startsWith("RULE-SET,"))[0].text)
+      .toBe("RULE-SET,giffgaff,🚀 节点选择");
+    expect(entries.findIndex((entry) => entry.text.startsWith("DOMAIN-KEYWORD,mcc234,")))
+      .toBeLessThan(entries.findIndex((entry) => entry.text.startsWith("RULE-SET,giffgaff,")));
   });
 
   afterEach(() => {

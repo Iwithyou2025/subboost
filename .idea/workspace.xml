@@ -6,7 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="cf75a08e-9c19-4984-9493-ac61488d9068" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/local/src/components/backup-restore-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/local/src/components/backup-restore-card.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/release-notes.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/release-notes.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -64,6 +64,7 @@
       <workItem from="1789390807776" duration="508000" />
       <workItem from="1789490475541" duration="1011000" />
       <workItem from="1789548222555" duration="4765000" />
+      <workItem from="1789909912145" duration="2415000" />
     </task>
     <servers />
   </component>

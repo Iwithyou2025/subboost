@@ -1,5 +1,9 @@
 import { PROXY_GROUP_MODULES } from "@subboost/core/generator/proxy-groups";
-import { normalizePersistedRuleOrder } from "@subboost/core/generator/rules";
+import {
+  getCustomRuleSetOrderKey,
+  normalizePersistedRuleOrder,
+  resolveAppliedRuleOrder,
+} from "@subboost/core/generator/rules";
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
 import { normalizeProxyGroupTargetRef } from "@subboost/core/proxy-group-targets";
 import { isValidRuleSetFormatBehavior, isValidRuleSetPathOrUrl, normalizeRuleSetPathInput } from "@subboost/core/rules/rule-model";
@@ -56,6 +60,32 @@ export function normalizeRuleOrderForState(state: {
     cnIpNoResolve: state.cnIpNoResolve,
     ruleOrder: state.ruleOrder,
   });
+}
+
+export function placeManualRuleSetFirst(
+  state: Parameters<typeof normalizeRuleOrderForState>[0],
+  ruleSetId: string,
+): string[] {
+  const key = getCustomRuleSetOrderKey(ruleSetId);
+  const order = resolveAppliedRuleOrder({
+    enabledModules: state.enabledProxyGroups,
+    customProxyGroups: state.customProxyGroups,
+    customRules: state.customRules,
+    customRuleSets: state.customRuleSets,
+    builtinRuleEdits: state.builtinRuleEdits,
+    proxyGroupNameOverrides: state.proxyGroupNameOverrides,
+    experimentalCnUseCnRuleSet: state.experimentalCnUseCnRuleSet,
+    cnIpNoResolve: state.cnIpNoResolve,
+    ruleOrder: state.ruleOrder,
+  }).filter((entry) => entry !== key);
+  const firstRuleSetIndex = order.findIndex(
+    (entry) =>
+      entry.startsWith("module:") ||
+      entry.startsWith("custom-rule-set:") ||
+      entry === "special:experimental-cn",
+  );
+  order.splice(firstRuleSetIndex < 0 ? order.length : firstRuleSetIndex, 0, key);
+  return order;
 }
 
 export function resolveModuleTargetName(moduleId: string, overrides?: Record<string, string>): string | null {

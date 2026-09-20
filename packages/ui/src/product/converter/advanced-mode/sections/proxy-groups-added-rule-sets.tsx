@@ -67,9 +67,13 @@ function createDraft(item: CustomRoutingRuleSetItem): RuleSetDraft {
 export function ProxyGroupsAddedRuleSets({
   showSearchHint = false,
   totalRules,
+  source = "all",
+  display = "path",
 }: {
   showSearchHint?: boolean;
   totalRules: number | null;
+  source?: "all" | "library" | "manual";
+  display?: "path" | "name";
 }) {
   const {
     enabledProxyGroups,
@@ -102,10 +106,13 @@ export function ProxyGroupsAddedRuleSets({
   }, [hiddenProxyGroups]);
   const visibleAddedRuleSets = React.useMemo(() => {
     const hidden = new Set(hiddenProxyGroups);
-    return addedRuleSets.filter(
-      (item) => !(item.target.kind === "module" && hidden.has(item.target.id)),
-    );
-  }, [addedRuleSets, hiddenProxyGroups]);
+    return addedRuleSets.filter((item) => {
+      if (item.target.kind === "module" && hidden.has(item.target.id)) return false;
+      if (source === "manual") return item.format !== undefined;
+      if (source === "library") return item.format === undefined;
+      return true;
+    });
+  }, [addedRuleSets, hiddenProxyGroups, source]);
 
   const targetOptions = React.useMemo(
     () => [
@@ -384,6 +391,7 @@ export function ProxyGroupsAddedRuleSets({
           }
 
           const displayPath = formatRuleSetPathForDisplay(item.path);
+          const displayText = display === "name" ? item.name : displayPath;
 
           return (
             <div
@@ -395,9 +403,9 @@ export function ProxyGroupsAddedRuleSets({
               </span>
               <span
                 className="min-w-0 max-w-[16rem] truncate font-mono text-white/75"
-                title={displayPath}
+                title={display === "name" ? `${item.name} — ${displayPath}` : displayPath}
               >
-                {displayPath}
+                {displayText}
               </span>
               {item.noResolve && (
                 <span className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-white/45">
