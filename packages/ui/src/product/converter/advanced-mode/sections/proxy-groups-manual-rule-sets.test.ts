@@ -1,7 +1,11 @@
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createManualRuleSet, type ManualRuleSetInput } from "@subboost/core/rules/manual-rule-set";
+import {
+  createManualRuleSet,
+  validateManualRuleSetInput,
+  type ManualRuleSetInput,
+} from "@subboost/core/rules/manual-rule-set";
 
 const mocks = vi.hoisted(() => ({ store: {} as any, inputs: [] as any[], selects: [] as any[], buttons: [] as any[], addedRuleSets: [] as any[], toast: vi.fn() }));
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as any[] }));
@@ -65,6 +69,8 @@ describe("ProxyGroupsManualRuleSets", () => {
     mocks.store = {
       hiddenProxyGroups: [], customProxyGroups: [], customRuleSets: [], proxyGroupNameOverrides: {},
       importManualRuleSet: vi.fn((input: ManualRuleSetInput) => {
+        const error = validateManualRuleSetInput(input);
+        if (error) return { ok: false, error };
         const rule = createManualRuleSet(input, new Set());
         mocks.store.customRuleSets.push(rule);
         return { ok: true, id: rule.id };
@@ -83,7 +89,10 @@ describe("ProxyGroupsManualRuleSets", () => {
     expect(mocks.inputs[1].className).toContain("h-7 border-white/10 bg-white/5");
     expect(html).not.toContain('aria-label="规则集格式"');
     expect(html).toContain("规则集 URL：支持 .mrs、.yaml");
-    expect(html).not.toContain('data-value="classical"');
+    expect(html).toContain("类型");
+    expect(html).toContain('data-value="domain"');
+    expect(html).toContain('data-value="ipcidr"');
+    expect(html).toContain('data-value="classical"');
   });
 
   it("imports YAML, shows green success, and clears that status after editing/deletion", () => {
@@ -103,14 +112,17 @@ describe("ProxyGroupsManualRuleSets", () => {
     expect(mocks.buttons[0].className).not.toContain("text-green-400");
   });
 
-  it("resets classical when switching to MRS and never fetches or parses remote nodes", () => {
+  it("keeps all type options and rejects Classical for MRS without fetching remote nodes", () => {
     fill();
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     mocks.inputs[1].onChange({ target: { value: "https://rules.example/domain.mrs" } });
     const html = render();
-    expect(mocks.selects[0].value).toBe("domain");
-    expect(html).not.toContain('data-value="classical"');
+    expect(mocks.selects[0].value).toBe("classical");
+    expect(html).toContain('data-value="domain"');
+    expect(html).toContain('data-value="ipcidr"');
+    expect(html).toContain('data-value="classical"');
     mocks.buttons[0].onClick();
+    expect(render()).toContain("MRS 仅支持 domain/ipcidr");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -118,6 +130,7 @@ describe("ProxyGroupsManualRuleSets", () => {
     render();
     mocks.inputs[0].onChange({ target: { value: "Invalid" } });
     mocks.inputs[1].onChange({ target: { value: "https://rules.example/rules.txt" } });
+    mocks.selects[0].onValueChange("domain");
     mocks.selects[1].onValueChange("module:select");
     render();
     expect(mocks.buttons[0].disabled).toBe(false);

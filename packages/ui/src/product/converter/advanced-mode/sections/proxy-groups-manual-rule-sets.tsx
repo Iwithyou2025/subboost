@@ -28,7 +28,7 @@ export function ProxyGroupsManualRuleSets() {
   } = useConfigStore();
   const [name, setName] = React.useState("");
   const [url, setUrl] = React.useState("");
-  const [behavior, setBehavior] = React.useState<RuleSetBehavior>("domain");
+  const [behavior, setBehavior] = React.useState<RuleSetBehavior | "">("");
   const [targetValue, setTargetValue] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [lastImport, setLastImport] = React.useState<{ id: string; fingerprint: string } | null>(null);
@@ -43,10 +43,10 @@ export function ProxyGroupsManualRuleSets() {
     rule.format === format && rule.behavior === behavior &&
     typeof rule.target === "object" && rule.target.kind === target?.kind && rule.target.id === target?.id
   );
-  const ready = Boolean(name.trim() && url.trim() && targetAvailable);
+  const ready = Boolean(name.trim() && url.trim() && behavior && targetAvailable);
 
   const handleImport = () => {
-    if (!target || !ready) return;
+    if (!target || !behavior || !ready) return;
     if (!format) {
       setError(MANUAL_RULE_SET_URL_SUFFIX_ERROR);
       return;
@@ -79,11 +79,11 @@ export function ProxyGroupsManualRuleSets() {
           className="h-7 min-w-0 flex-[1_1_8rem] border-white/10 bg-white/5 text-xs"
         />
         <Select value={behavior} onValueChange={(value) => { setBehavior(value as RuleSetBehavior); setError(null); }}>
-          <SelectTrigger aria-label="规则集类型" className="h-7 w-[120px] shrink-0 text-xs"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="规则集类型" className="h-7 w-[120px] shrink-0 text-xs"><SelectValue placeholder="类型" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="domain" className="text-xs">域名 / domain</SelectItem>
             <SelectItem value="ipcidr" className="text-xs">IP / ipcidr</SelectItem>
-            {format === "yaml" && <SelectItem value="classical" className="text-xs">Classical</SelectItem>}
+            <SelectItem value="classical" className="text-xs">Classical</SelectItem>
           </SelectContent>
         </Select>
         <Select value={targetAvailable ? targetValue : ""} onValueChange={(value) => { setTargetValue(value); setError(null); }}>
@@ -109,9 +109,6 @@ export function ProxyGroupsManualRuleSets() {
             onChange={(event) => {
               const nextUrl = event.target.value;
               setUrl(nextUrl);
-              if (inferRuleSetFormat(nextUrl) === "mrs" && behavior === "classical") {
-                setBehavior("domain");
-              }
               setError(null);
             }}
             onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); handleImport(); } }}
