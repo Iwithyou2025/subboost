@@ -305,7 +305,7 @@ describe("ProxyGroupsAddedRuleSets", () => {
   });
 
   it("keeps explicit format/classical and false no-resolve when saving a manual source", () => {
-    const item = { ...moduleItem, format: "yaml", behavior: "classical", path: "https://rules.example/finance.yml" };
+    const item = { ...moduleItem, format: "yaml", behavior: "classical", path: "https://rules.example/finance.yaml" };
     mocks.ruleSets = [item];
     renderAdded({
       0: item.key,

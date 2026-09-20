@@ -18,8 +18,8 @@ describe("manual remote rule sets", () => {
   it.each([
     ["https://rules.example/a.MRS?download=1", "mrs"],
     ["https://rules.example/a.yaml", "yaml"],
-    ["https://rules.example/a.YML#rules", "yaml"],
     ["https://rules.example/download?id=1", null],
+    ["https://rules.example/a.txt", null],
     ["incomplete", null],
   ])("infers the source format from %s", (url, expected) => {
     expect(inferRuleSetFormat(url)).toBe(expected);
@@ -28,6 +28,7 @@ describe("manual remote rule sets", () => {
   it.each([
     { name: " " }, { url: "https://" }, { url: "file:///etc/passwd" },
     { url: "javascript:alert(1)" }, { url: "https://user:password@rules.example/a.yaml" },
+    { url: "https://rules.example/download?id=1" }, { url: "https://rules.example/a.txt" },
     { format: "mrs" }, { format: "text" }, { behavior: "other" }, { target: { kind: "module", id: "" } },
   ])("rejects invalid or incompatible input %j", (patch) => {
     expect(validateManualRuleSetInput({ ...input, ...patch } as ManualRuleSetInput)).toBeTruthy();
@@ -35,7 +36,8 @@ describe("manual remote rule sets", () => {
 
   it("preserves the URL query and derives safe, readable, collision-free IDs from names", () => {
     expect(validateManualRuleSetInput(input)).toBeNull();
-    expect(validateManualRuleSetInput({ ...input, url: "https://rules.example/download?id=1" })).toBeNull();
+    expect(validateManualRuleSetInput({ ...input, url: "https://rules.example/download?id=1" }))
+      .toBe("规则集 URL 必须以 .mrs 或 .yaml 结尾");
     expect(canonicalRuleSetUrl(" HTTPS://RULES.example:443/a.mrs?q=1#fragment ")).toBe("https://rules.example/a.mrs?q=1");
     const a = createManualRuleSet({ ...input, name: "../../google,another-policy" }, new Set(["google"]));
     const b = createManualRuleSet(input, new Set([a.id]));
@@ -69,7 +71,7 @@ describe("manual remote rule sets", () => {
       { id: "manual-official-ip", name: "IP", path: `${meta}/geoip/finance.mrs`, behavior: "ipcidr", format: "mrs", noResolve: true, target: input.target },
       { id: "manual-third-party", name: "Third party", path: "https://third.example/rules.mrs", behavior: "domain", format: "mrs", target: input.target },
       { id: "manual-yaml", name: "YAML", path: input.url, behavior: "classical", format: "yaml", target: input.target },
-      { id: "manual-domain-yaml", name: "Domain YAML", path: "https://rules.example/domain.yml", behavior: "domain", format: "yaml", target: input.target },
+      { id: "manual-domain-yaml", name: "Domain YAML", path: "https://rules.example/domain.yaml", behavior: "domain", format: "yaml", target: input.target },
       { id: "manual-ip-yaml", name: "IP YAML", path: "https://rules.example/ip.yaml", behavior: "ipcidr", format: "yaml", target: input.target },
       { id: "legacy", name: "Legacy", path: "geosite/legacy.mrs", behavior: "domain", target: input.target },
     ];

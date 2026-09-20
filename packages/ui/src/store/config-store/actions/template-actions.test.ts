@@ -34,7 +34,7 @@ describe("createTemplateActions", () => {
     const config: SubBoostTemplateConfig = {
       ...buildDefaultSubBoostTemplateConfig("minimal"),
       customRuleSets: [
-        { id: "manual-yaml", name: "YAML", format: "yaml", behavior: "classical", path: "https://rules.example/custom.yml", noResolve: false, target: { kind: "module", id: "select" } },
+        { id: "manual-yaml", name: "YAML", format: "yaml", behavior: "classical", path: "https://rules.example/custom.yaml", noResolve: false, target: { kind: "module", id: "select" } },
         { id: "manual-mrs", name: "MRS", format: "mrs", behavior: "ipcidr", path: "https://rules.example/ip.mrs", noResolve: false, target: { kind: "module", id: "select" } },
       ],
       ruleOrder: ["custom-rule-set:manual-yaml", "custom-rule-set:manual-mrs"],

@@ -49,7 +49,7 @@ import { createTemplate, getTemplateDetail } from "./template-service";
 import { decryptJsonObject } from "./crypto";
 
 const rules: CustomRuleSet[] = [
-  { id: "manual-rule-set-finance", name: "金融", path: "https://rules.example/finance.yml?token=a%2Bb", format: "yaml", behavior: "classical", target: { kind: "module", id: "select" }, noResolve: false },
+  { id: "manual-rule-set-finance", name: "金融", path: "https://rules.example/finance.yaml?token=a%2Bb", format: "yaml", behavior: "classical", target: { kind: "module", id: "select" }, noResolve: false },
   { id: "manual-rule-set-ip", name: "IP", path: "https://rules.example/ip.mrs", format: "mrs", behavior: "ipcidr", target: { kind: "module", id: "select" }, noResolve: false },
   { id: "legacy", name: "旧规则", path: "geosite/legacy.mrs", behavior: "domain", target: { kind: "module", id: "select" } },
 ];
@@ -71,7 +71,7 @@ describe("manual rule-set persistence contract", () => {
       sources: [{ id: "source-1", type: "url", content: "https://nodes.example/sub" }],
     };
     await createSubscription("owner-1", { name: "Finance", nodes, urls: ["https://nodes.example/sub"], config });
-    expect(db.subscription.encryptedConfig).not.toContain("finance.yml");
+    expect(db.subscription.encryptedConfig).not.toContain("finance.yaml");
     expect(decryptJsonObject(db.subscription.encryptedConfig).customRuleSets).toEqual(rules);
     const detail = await getSubscription("owner-1", "sub-1");
     expect(normalizeRuleModelFromConfig(detail!.config).customRuleSets).toEqual(rules);
@@ -98,7 +98,7 @@ describe("manual rule-set persistence contract", () => {
   it("round-trips encrypted templates without dropping format or stable target IDs", async () => {
     const config = { ...buildDefaultSubBoostTemplateConfig("minimal"), customRuleSets: rules };
     await createTemplate("owner-1", { name: "Finance", config });
-    expect(db.template.encryptedConfig).not.toContain("finance.yml");
+    expect(db.template.encryptedConfig).not.toContain("finance.yaml");
     db.template = structuredClone(db.template);
     const detail = await getTemplateDetail("owner-1", "template-1");
     expect(detail!.config.customRuleSets).toEqual(rules);

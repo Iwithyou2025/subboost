@@ -4,9 +4,12 @@ import * as React from "react";
 import { Check, Link as LinkIcon } from "lucide-react";
 import { PROXY_GROUP_MODULES } from "@subboost/core/generator/proxy-groups";
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
-import { inferRuleSetFormat } from "@subboost/core/rules/manual-rule-set";
+import {
+  inferRuleSetFormat,
+  MANUAL_RULE_SET_URL_SUFFIX_ERROR,
+} from "@subboost/core/rules/manual-rule-set";
 import { parseRuleSetTargetValue } from "@subboost/core/rules/custom-routing-rule-sets";
-import type { RuleSetBehavior, RuleSetFormat } from "@subboost/core/types/config";
+import type { RuleSetBehavior } from "@subboost/core/types/config";
 import { IconButton } from "@subboost/ui/components/ui/icon-button";
 import { Input } from "@subboost/ui/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@subboost/ui/components/ui/select";
@@ -25,11 +28,11 @@ export function ProxyGroupsManualRuleSets() {
   } = useConfigStore();
   const [name, setName] = React.useState("");
   const [url, setUrl] = React.useState("");
-  const [format, setFormat] = React.useState<RuleSetFormat>("mrs");
   const [behavior, setBehavior] = React.useState<RuleSetBehavior>("domain");
   const [targetValue, setTargetValue] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [lastImport, setLastImport] = React.useState<{ id: string; fingerprint: string } | null>(null);
+  const format = inferRuleSetFormat(url);
   const fingerprint = JSON.stringify([name.trim(), url.trim(), format, behavior, targetValue]);
   const target = parseRuleSetTargetValue(targetValue);
   const targetAvailable = target?.kind === "module"
@@ -42,13 +45,12 @@ export function ProxyGroupsManualRuleSets() {
   );
   const ready = Boolean(name.trim() && url.trim() && targetAvailable);
 
-  const changeFormat = (next: RuleSetFormat) => {
-    setFormat(next);
-    if (next === "mrs" && behavior === "classical") setBehavior("domain");
-    setError(null);
-  };
   const handleImport = () => {
     if (!target || !ready) return;
+    if (!format) {
+      setError(MANUAL_RULE_SET_URL_SUFFIX_ERROR);
+      return;
+    }
     const result = importManualRuleSet({ name, url, format, behavior, target });
     if (!result.ok) {
       setError(result.error);
@@ -76,13 +78,6 @@ export function ProxyGroupsManualRuleSets() {
           placeholder="规则集名称"
           className="h-7 min-w-0 flex-[1_1_8rem] border-white/10 bg-white/5 text-xs"
         />
-        <Select value={format} onValueChange={(value) => changeFormat(value as RuleSetFormat)}>
-          <SelectTrigger aria-label="规则集格式" className="h-7 w-[76px] shrink-0 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="mrs" className="text-xs">MRS</SelectItem>
-            <SelectItem value="yaml" className="text-xs">YAML</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={behavior} onValueChange={(value) => { setBehavior(value as RuleSetBehavior); setError(null); }}>
           <SelectTrigger aria-label="规则集类型" className="h-7 w-[120px] shrink-0 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -112,13 +107,15 @@ export function ProxyGroupsManualRuleSets() {
             aria-label="规则集 URL"
             value={url}
             onChange={(event) => {
-              setUrl(event.target.value);
-              const inferred = inferRuleSetFormat(event.target.value);
-              if (inferred) changeFormat(inferred);
+              const nextUrl = event.target.value;
+              setUrl(nextUrl);
+              if (inferRuleSetFormat(nextUrl) === "mrs" && behavior === "classical") {
+                setBehavior("domain");
+              }
               setError(null);
             }}
             onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); handleImport(); } }}
-            placeholder="规则集 URL：支持 .mrs、.yaml、.yml"
+            placeholder="规则集 URL：支持 .mrs、.yaml"
             className="h-7 border-white/10 bg-white/5 pl-7 text-xs"
           />
         </div>

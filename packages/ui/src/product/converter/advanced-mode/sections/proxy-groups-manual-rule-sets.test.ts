@@ -51,10 +51,10 @@ function render(component = ProxyGroupsManualRuleSets) {
 function fill() {
   render();
   mocks.inputs[0].onChange({ target: { value: "Finance" } });
-  mocks.inputs[1].onChange({ target: { value: "https://rules.example/finance.yml?token=1" } });
-  mocks.selects[2].onValueChange("module:select");
+  mocks.inputs[1].onChange({ target: { value: "https://rules.example/finance.yaml?token=1" } });
+  mocks.selects[1].onValueChange("module:select");
   render();
-  mocks.selects[1].onValueChange("classical");
+  mocks.selects[0].onValueChange("classical");
   render();
 }
 
@@ -81,15 +81,16 @@ describe("ProxyGroupsManualRuleSets", () => {
     expect(mocks.addedRuleSets[0]).toEqual({ totalRules: null, source: "manual", display: "name" });
     expect(mocks.buttons[0].disabled).toBe(true);
     expect(mocks.inputs[1].className).toContain("h-7 border-white/10 bg-white/5");
+    expect(html).not.toContain('aria-label="规则集格式"');
+    expect(html).toContain("规则集 URL：支持 .mrs、.yaml");
     expect(html).not.toContain('data-value="classical"');
   });
 
   it("imports YAML, shows green success, and clears that status after editing/deletion", () => {
     fill();
-    expect(mocks.selects[0].value).toBe("yaml");
     expect(mocks.buttons[0].disabled).toBe(false);
     mocks.buttons[0].onClick();
-    expect(mocks.store.importManualRuleSet).toHaveBeenCalledWith({ name: "Finance", url: "https://rules.example/finance.yml?token=1", format: "yaml", behavior: "classical", target: { kind: "module", id: "select" } });
+    expect(mocks.store.importManualRuleSet).toHaveBeenCalledWith({ name: "Finance", url: "https://rules.example/finance.yaml?token=1", format: "yaml", behavior: "classical", target: { kind: "module", id: "select" } });
     render();
     expect(mocks.buttons[0].className).toContain("text-green-400");
     expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: "已添加规则集" }));
@@ -107,11 +108,25 @@ describe("ProxyGroupsManualRuleSets", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     mocks.inputs[1].onChange({ target: { value: "https://rules.example/domain.mrs" } });
     const html = render();
-    expect(mocks.selects[0].value).toBe("mrs");
-    expect(mocks.selects[1].value).toBe("domain");
+    expect(mocks.selects[0].value).toBe("domain");
     expect(html).not.toContain('data-value="classical"');
     mocks.buttons[0].onClick();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects URLs without a supported suffix and shows a prompt", () => {
+    render();
+    mocks.inputs[0].onChange({ target: { value: "Invalid" } });
+    mocks.inputs[1].onChange({ target: { value: "https://rules.example/rules.txt" } });
+    mocks.selects[1].onValueChange("module:select");
+    render();
+    expect(mocks.buttons[0].disabled).toBe(false);
+    mocks.buttons[0].onClick();
+    const html = render();
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("规则集 URL 必须以 .mrs 或 .yaml 结尾");
+    expect(mocks.store.importManualRuleSet).not.toHaveBeenCalled();
+    expect(mocks.toast).not.toHaveBeenCalled();
   });
 
   it("shows a name-conflict prompt and does not claim success", () => {

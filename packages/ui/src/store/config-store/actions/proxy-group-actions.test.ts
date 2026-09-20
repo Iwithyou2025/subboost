@@ -67,6 +67,19 @@ describe("createProxyGroupActions", () => {
     expect(getState()).toEqual(before);
   });
 
+  it("rejects manual URLs without a supported suffix before changing state", () => {
+    const { actions, getState } = createHarness();
+    const before = structuredClone(getState());
+    expect(actions.importManualRuleSet({
+      name: "Invalid source",
+      url: "https://rules.example/rules.txt",
+      format: "yaml",
+      behavior: "domain",
+      target: { kind: "module", id: "select" },
+    })).toEqual({ ok: false, error: "规则集 URL 必须以 .mrs 或 .yaml 结尾" });
+    expect(getState()).toEqual(before);
+  });
+
   it("rejects same-named sources and preserves explicit false no-resolve for IP rules", () => {
     const { actions, getState } = createHarness();
     const input = { name: "giffgaff-ip", url: "https://rules.example/ip.mrs", format: "mrs" as const, behavior: "ipcidr" as const, target: { kind: "module" as const, id: "select" } };
