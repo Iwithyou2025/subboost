@@ -67,7 +67,7 @@ function createDraft(item: CustomRoutingRuleSetItem): RuleSetDraft {
 export function ProxyGroupsAddedRuleSets({
   showSearchHint = false,
   totalRules,
-  source = "all",
+  source = "library",
   display = "path",
 }: {
   showSearchHint?: boolean;

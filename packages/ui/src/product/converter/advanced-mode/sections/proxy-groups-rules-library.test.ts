@@ -244,7 +244,7 @@ describe("ProxyGroupsRulesLibrary", () => {
   it("renders search states and forwards search controls", () => {
     const { html } = renderLibrary();
     expect(html).toContain("匹配 2");
-    expect(mocks.captures.addedRuleSets[0]).toEqual({ showSearchHint: false, totalRules: 30, source: "library" });
+    expect(mocks.captures.addedRuleSets[0]).toEqual({ showSearchHint: false, totalRules: 30 });
     mocks.captures.inputs[0].onChange({ target: { value: "steam" } });
     expect(mocks.search.setRuleSearchKeyword).toHaveBeenCalledWith("steam");
 
@@ -552,7 +552,7 @@ describe("ProxyGroupsRulesLibrary", () => {
     mocks.search.searchResults = [];
     mocks.search.totalRules = 0;
     expect(renderLibrary().html).toContain("规则库");
-    expect(mocks.captures.addedRuleSets[0]).toEqual({ showSearchHint: true, totalRules: 0, source: "library" });
+    expect(mocks.captures.addedRuleSets[0]).toEqual({ showSearchHint: true, totalRules: 0 });
 
     mocks.search.ruleSearchKeyword = "all";
     mocks.search.searchResults = [telegramRule];

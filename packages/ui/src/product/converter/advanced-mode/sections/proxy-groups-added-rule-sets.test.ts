@@ -310,7 +310,7 @@ describe("ProxyGroupsAddedRuleSets", () => {
     renderAdded({
       0: item.key,
       1: { path: item.path, targetValue: "module:auto", noResolve: false },
-    });
+    }, { totalRules: null, source: "manual" });
     mocks.captures.buttons.find((props: any) => props.title === "保存规则集").onClick();
     expect(mocks.store.updateModuleRule).toHaveBeenCalledWith("auto", item.id, {
       id: item.id, name: item.name, path: item.path, format: "yaml", behavior: "classical", noResolve: false,
