@@ -34,7 +34,7 @@ describe("manual remote rule sets", () => {
     expect(validateManualRuleSetInput({ ...input, ...patch } as ManualRuleSetInput)).toBeTruthy();
   });
 
-  it("preserves the URL query and derives safe, readable, collision-free IDs from names", () => {
+  it("preserves the URL query and derives safe, readable, target-scoped IDs from names", () => {
     expect(validateManualRuleSetInput(input)).toBeNull();
     expect(validateManualRuleSetInput({ ...input, url: "https://rules.example/download?id=1" }))
       .toBe("规则集 URL 必须以 .mrs 或 .yaml 结尾");
@@ -44,8 +44,14 @@ describe("manual remote rule sets", () => {
     expect(a.id).toBe("google-another-policy");
     expect(b.id).toBe("finance");
     expect(createManualRuleSet({ ...input, name: "giffgaff" }, new Set()).id).toBe("giffgaff");
-    expect(() => createManualRuleSet({ ...input, name: "Giffgaff" }, new Set(["giffgaff"])))
-      .toThrow("规则集名称已存在");
+    expect(createManualRuleSet({ ...input, name: "Giffgaff" }, new Set(["giffgaff"])).id)
+      .toBe("giffgaff--module-select");
+    expect(createManualRuleSet({
+      ...input,
+      name: "Giffgaff",
+      target: { kind: "custom", id: "uk-home" },
+    }, new Set(["giffgaff", "giffgaff--module-select"])).id)
+      .toBe("giffgaff--custom-uk-home");
     expect(createManualRuleSet({ ...input, name: "英国通信" }, new Set()).id).toBe("英国通信");
     expect(a.path).toBe(input.url);
     expect(a).toMatchObject({ format: "yaml", behavior: "classical", noResolve: false });

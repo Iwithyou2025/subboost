@@ -130,6 +130,13 @@ vi.mock("@subboost/core/proxy-group-name", () => ({
     override || module.name,
 }));
 vi.mock("@subboost/core/proxy-group-targets", () => ({
+  normalizeProxyGroupTargetRef: (target: unknown) => {
+    if (!target || typeof target !== "object") return null;
+    const entry = target as { kind?: string; id?: string };
+    return (entry.kind === "module" || entry.kind === "custom") && entry.id
+      ? { kind: entry.kind, id: entry.id }
+      : null;
+  },
   resolveProxyGroupTargetName: (
     target: unknown,
     options: {
@@ -315,6 +322,40 @@ describe("ProxyGroupsAddedRuleSets", () => {
     expect(mocks.store.updateModuleRule).toHaveBeenCalledWith("auto", item.id, {
       id: item.id, name: item.name, path: item.path, format: "yaml", behavior: "classical", noResolve: false,
     });
+  });
+
+  it("blocks moving a manual source into a group that already has the same URL", () => {
+    const item = {
+      ...moduleItem,
+      id: "giffgaff",
+      name: "giffgaff",
+      format: "yaml",
+      behavior: "classical",
+      path: "https://rules.example/giffgaff.yaml",
+    };
+    mocks.ruleSets = [item];
+    mocks.store.customRuleSets = [
+      { ...item, target: { kind: "module", id: "auto" } },
+      {
+        ...item,
+        id: "another-source",
+        name: "Another source",
+        target: { kind: "custom", id: "custom-2" },
+      },
+    ];
+    renderAdded({
+      0: item.key,
+      1: { path: item.path, targetValue: "custom:custom-2", noResolve: false },
+    }, { totalRules: null, source: "manual" });
+
+    mocks.captures.buttons.find((props: any) => props.title === "保存规则集").onClick();
+
+    expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
+      description: "此规则集 URL 已存在，请在已有规则集中调整目标代理组",
+      variant: "warning",
+    }));
+    expect(mocks.store.moveModuleRule).not.toHaveBeenCalled();
+    expect(mocks.store.updateModuleRule).not.toHaveBeenCalled();
   });
 
   it("separates library and manual lists and shows the entered manual name", () => {

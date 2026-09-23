@@ -50,6 +50,7 @@ import { decryptJsonObject } from "./crypto";
 
 const rules: CustomRuleSet[] = [
   { id: "manual-rule-set-finance", name: "金融", path: "https://rules.example/finance.yaml?token=a%2Bb", format: "yaml", behavior: "classical", target: { kind: "module", id: "select" }, noResolve: false },
+  { id: "manual-rule-set-finance--module-ai", name: "金融", path: "https://rules.example/finance.yaml?token=a%2Bb", format: "yaml", behavior: "classical", target: { kind: "module", id: "ai" }, noResolve: false },
   { id: "manual-rule-set-ip", name: "IP", path: "https://rules.example/ip.mrs", format: "mrs", behavior: "ipcidr", target: { kind: "module", id: "select" }, noResolve: false },
   { id: "legacy", name: "旧规则", path: "geosite/legacy.mrs", behavior: "domain", target: { kind: "module", id: "select" } },
 ];
@@ -66,7 +67,7 @@ describe("manual rule-set persistence contract", () => {
 
   it("retains rules through encrypted database writes, read/update, source refresh and restored records", async () => {
     const config = {
-      enabledGroups: ["select", "cn", "final"], customRuleSets: structuredClone(rules),
+      enabledGroups: ["select", "ai", "cn", "final"], customRuleSets: structuredClone(rules),
       ruleOrder: rules.map((rule) => `custom-rule-set:${rule.id}`),
       sources: [{ id: "source-1", type: "url", content: "https://nodes.example/sub" }],
     };
@@ -89,8 +90,10 @@ describe("manual rule-set persistence contract", () => {
       const result = await generateSubscriptionYaml(db.subscription.token, format);
       const generated = load(result!.yaml) as ClashConfig;
       expect(generated["rule-providers"]?.[rules[0].id]).toMatchObject({ format: "yaml", behavior: "classical", url: rules[0].path });
-      expect(generated["rule-providers"]?.[rules[1].id].format).toBe("mrs");
+      expect(generated["rule-providers"]?.[rules[2].id].format).toBe("mrs");
       expect(generated.rules).toContain(`RULE-SET,${rules[0].id},🚀 节点选择`);
+      expect(generated["rule-providers"]?.[rules[1].id]).toMatchObject({ format: "yaml", url: rules[1].path });
+      expect(generated.rules).toContain(`RULE-SET,${rules[1].id},🤖 AI 服务`);
     }
     expect(db.subscription.encryptedConfig).toBe(encryptedBefore);
   });

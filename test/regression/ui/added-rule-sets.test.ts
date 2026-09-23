@@ -112,11 +112,12 @@ vi.mock("@subboost/ui/components/ui/switch", () => ({
 vi.mock("@subboost/ui/components/ui/toaster", () => ({ toast: mocks.toast }));
 vi.mock("@subboost/core/generator/proxy-groups", () => ({
   PROXY_GROUP_MODULES: [
-    { id: "auto", name: "Auto" },
-    { id: "fallback", name: "Fallback" },
+    { id: "auto", name: "Auto", rules: [] },
+    { id: "fallback", name: "Fallback", rules: [] },
   ],
 }));
 vi.mock("@subboost/core/generator/module-rules", () => ({
+  getModuleRuleOrderKey: (moduleId: string, ruleId: string) => `${moduleId}:${ruleId}`,
   getEffectiveModuleRules: vi.fn(() => mocks.effectiveRules),
 }));
 vi.mock("@subboost/core/proxy-group-name", () => ({

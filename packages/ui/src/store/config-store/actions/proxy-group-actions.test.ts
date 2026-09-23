@@ -99,20 +99,93 @@ describe("createProxyGroupActions", () => {
       .toMatchObject({ format: "mrs", behavior: "ipcidr", noResolve: false });
   });
 
-  it("rejects a manual name that conflicts with an existing built-in provider ID", () => {
-    const { actions, getState } = createHarness();
-    const before = structuredClone(getState());
+  it("allows the same manual name and URL in different proxy groups with unique provider IDs", () => {
+    const { actions, getState } = createHarness({ enabledProxyGroups: ["select", "ai", "final"] });
+    const input = {
+      name: "giffgaff",
+      url: "https://rules.example/giffgaff.yaml",
+      format: "yaml" as const,
+      behavior: "classical" as const,
+      target: { kind: "module" as const, id: "select" },
+    };
+
+    expect(actions.importManualRuleSet(input)).toEqual({ ok: true, id: "giffgaff" });
     expect(actions.importManualRuleSet({
+      ...input,
+      target: { kind: "module", id: "ai" },
+    })).toEqual({ ok: true, id: "giffgaff--module-ai" });
+    expect(actions.importManualRuleSet({
+      ...input,
+      name: "Another source",
+    })).toEqual({
+      ok: false,
+      error: "此规则集 URL 已存在，请在已有规则集中调整目标代理组",
+    });
+
+    expect(getState().customRuleSets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "giffgaff", name: "giffgaff", path: input.url, target: input.target }),
+      expect.objectContaining({
+        id: "giffgaff--module-ai",
+        name: "giffgaff",
+        path: input.url,
+        target: { kind: "module", id: "ai" },
+      }),
+    ]));
+    const entries = buildGeneratedRuleEntries({
+      enabledModules: getState().enabledProxyGroups,
+      customRules: [],
+      customRuleSets: getState().customRuleSets,
+    });
+    expect(entries.some((entry) => entry.text === "RULE-SET,giffgaff,🚀 节点选择")).toBe(true);
+    expect(entries.some((entry) => entry.text === "RULE-SET,giffgaff--module-ai,🤖 AI 服务")).toBe(true);
+
+    actions.moveModuleRule("ai", "giffgaff--module-ai", { kind: "module", id: "select" });
+    expect(getState().customRuleSets.find((rule) => rule.id === "giffgaff--module-ai")?.target)
+      .toEqual({ kind: "module", id: "ai" });
+  });
+
+  it("scopes built-in name and URL conflicts to their effective target proxy group", () => {
+    const { actions, getState } = createHarness();
+    const differentTarget = actions.importManualRuleSet({
       name: "OpenAI",
       url: "https://rules.example/not-openai.yaml",
       format: "yaml",
       behavior: "domain",
       target: { kind: "module", id: "select" },
+    });
+    expect(differentTarget).toEqual({ ok: true, id: "openai--module-select" });
+
+    expect(actions.importManualRuleSet({
+      name: "OpenAI",
+      url: "https://rules.example/ai-openai.yaml",
+      format: "yaml",
+      behavior: "domain",
+      target: { kind: "module", id: "ai" },
     })).toEqual({
       ok: false,
       error: "规则集名称已存在或与内置规则集冲突，请更换名称",
     });
-    expect(getState()).toEqual(before);
+
+    const openAiBuiltin = PROXY_GROUP_MODULES
+      .flatMap((module) => module.rules)
+      .find((rule) => rule.id === "openai")!;
+    expect(actions.importManualRuleSet({
+      name: "Different name",
+      url: `${getState().ruleProviderBaseUrl}/${openAiBuiltin.path}`,
+      format: "mrs",
+      behavior: openAiBuiltin.behavior,
+      target: { kind: "module", id: "select" },
+    }).ok).toBe(true);
+    expect(actions.importManualRuleSet({
+      name: "Same URL in AI",
+      url: `${getState().ruleProviderBaseUrl}/${openAiBuiltin.path}`,
+      format: "mrs",
+      behavior: openAiBuiltin.behavior,
+      target: { kind: "module", id: "ai" },
+    })).toEqual({
+      ok: false,
+      error: "此规则集 URL 已存在，请在已有规则集中调整目标代理组",
+    });
   });
 
   it("uses the entered name as the provider ID and places a manual source before every RULE-SET", () => {

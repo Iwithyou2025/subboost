@@ -7,12 +7,8 @@ import { normalizeProxyGroupAdvancedConfig } from "@subboost/core/proxy-group-ad
 import { PROXY_GROUP_MODULES } from "@subboost/core/generator/proxy-groups";
 import { getModuleRuleOrderKey, isPresetModuleRule } from "@subboost/core/generator/module-rules";
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
-import { buildRuleSetUrlFromPath } from "@subboost/core/rules/rule-model";
 import {
-  canonicalRuleSetUrl,
   createManualRuleSet,
-  createManualRuleSetId,
-  MANUAL_RULE_SET_NAME_CONFLICT_ERROR,
   validateManualRuleSetInput,
   type ManualRuleSetImportResult,
 } from "@subboost/core/rules/manual-rule-set";
@@ -20,6 +16,7 @@ import type { ConfigActions, RuleSetDraft } from "../definitions";
 import type { GetState, SetAndGenerateConfig, SetState } from "../store-types";
 import {
   appendUniqueCustomRuleSets,
+  findManualRuleSetConflict,
   findBuiltinRuleEditKeyByTarget,
   normalizeRuleOrderForState,
   normalizeRuleSetDraft,
@@ -105,33 +102,20 @@ export function createProxyGroupActions(
           result = { ok: false, error: "目标代理组不存在、已隐藏或已停用，请重新选择" };
           return state;
         }
-        const sourceUrl = canonicalRuleSetUrl(input.url);
         const enabledProxyGroups = input.target.kind === "module" && !state.enabledProxyGroups.includes(input.target.id)
           ? [...state.enabledProxyGroups, input.target.id]
           : state.enabledProxyGroups;
         const usedIds = new Set([
-          ...state.customRuleSets.flatMap((rule) => [
-            rule.id.toLowerCase(),
-            createManualRuleSetId(rule.name),
-          ]),
+          ...state.customRuleSets.map((rule) => rule.id.toLowerCase()),
           ...PROXY_GROUP_MODULES.flatMap((module) => module.rules.map((rule) => rule.id.toLowerCase())),
           "cn", // Experimental built-in provider.
         ]);
-        if (usedIds.has(createManualRuleSetId(input.name))) {
-          result = { ok: false, error: MANUAL_RULE_SET_NAME_CONFLICT_ERROR };
-          return state;
-        }
-        const duplicates = state.customRuleSets.some((rule) =>
-          canonicalRuleSetUrl(buildRuleSetUrlFromPath(rule.path, state.ruleProviderBaseUrl)) === sourceUrl
+        const conflict = findManualRuleSetConflict(
+          { ...state, enabledProxyGroups },
+          input,
         );
-        const builtinDuplicate = PROXY_GROUP_MODULES.some((module) =>
-          enabledProxyGroups.includes(module.id) && module.rules.some((rule) =>
-            state.builtinRuleEdits?.[getModuleRuleOrderKey(module.id, rule.id)]?.enabled !== false &&
-            canonicalRuleSetUrl(buildRuleSetUrlFromPath(rule.path, state.ruleProviderBaseUrl)) === sourceUrl
-          )
-        );
-        if (duplicates || builtinDuplicate) {
-          result = { ok: false, error: "此规则集 URL 已存在，请在已有规则集中调整目标代理组" };
+        if (conflict) {
+          result = { ok: false, error: conflict };
           return state;
         }
         const rule = createManualRuleSet(input, usedIds);
@@ -316,6 +300,17 @@ export function createProxyGroupActions(
           id: rid,
         });
         if (!normalized) return state;
+        if (
+          normalized.format !== undefined &&
+          findManualRuleSetConflict(state, {
+            name: normalized.name,
+            url: normalized.path,
+            target: targetRef,
+            excludeId: rid,
+          })
+        ) {
+          return state;
+        }
 
         const nextCustomRuleSets = state.customRuleSets.map((item, itemIndex) =>
           itemIndex === index ? { ...normalized, target: targetRef } : item
@@ -420,6 +415,21 @@ export function createProxyGroupActions(
             ruleSet.id === rid && ruleTargetMatchesContainer(ruleSet.target, sourceTargetRef, sourceTarget)
         );
         if (customRuleSetIndex >= 0) {
+          const movingRuleSet = state.customRuleSets[customRuleSetIndex];
+          if (
+            movingRuleSet.format !== undefined &&
+            findManualRuleSetConflict(
+              { ...state, enabledProxyGroups: nextEnabledProxyGroups },
+              {
+                name: movingRuleSet.name,
+                url: movingRuleSet.path,
+                target,
+                excludeId: movingRuleSet.id,
+              },
+            )
+          ) {
+            return state;
+          }
           const targetModule = target.kind === "module"
             ? PROXY_GROUP_MODULES.find((proxyModule) => proxyModule.id === targetId)
             : undefined;

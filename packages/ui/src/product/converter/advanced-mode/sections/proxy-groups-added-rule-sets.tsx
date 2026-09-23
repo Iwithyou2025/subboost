@@ -29,6 +29,7 @@ import {
   useConfigStore,
   type RuleSetDraft as StoreRuleSetDraft,
 } from "@subboost/ui/store/config-store";
+import { findManualRuleSetConflict } from "@subboost/ui/store/config-store/actions/proxy-group-rule-set-helpers";
 import {
   RULE_EDIT_ACTIONS_CLASS,
   RULE_EDIT_PRIMARY_FIELD_CLASS,
@@ -82,6 +83,8 @@ export function ProxyGroupsAddedRuleSets({
     builtinRuleEdits = {},
     customProxyGroups = [],
     proxyGroupNameOverrides = {},
+    ruleProviderBaseUrl = DEFAULT_RULE_PROVIDER_BASE_URL,
+    experimentalCnUseCnRuleSet,
     toggleProxyGroup,
     updateModuleRule,
     removeModuleRule,
@@ -149,16 +152,36 @@ export function ProxyGroupsAddedRuleSets({
     setDraft(null);
   }, [editingKey, visibleAddedRuleSets]);
 
-  const hasConflict = React.useCallback(
+  const getConflictError = React.useCallback(
     (
       item: CustomRoutingRuleSetItem,
       target: { kind: "module" | "custom"; id: string },
+      path: string,
     ) => {
+      if (item.format !== undefined) {
+        return findManualRuleSetConflict(
+          {
+            enabledProxyGroups,
+            customProxyGroups,
+            customRuleSets,
+            builtinRuleEdits,
+            proxyGroupNameOverrides,
+            ruleProviderBaseUrl,
+            experimentalCnUseCnRuleSet,
+          },
+          {
+            name: item.name,
+            url: path,
+            target,
+            excludeId: item.id,
+          },
+        );
+      }
       if (target.kind === "module") {
         const proxyModule = visibleProxyGroupModules.find(
           (entry) => entry.id === target.id,
         );
-        if (!proxyModule) return true;
+        if (!proxyModule) return "目标代理组不存在、已隐藏或已停用，请重新选择";
         const moduleName = resolveProxyGroupModuleName(
           proxyModule,
           proxyGroupNameOverrides?.[proxyModule.id],
@@ -184,13 +207,15 @@ export function ProxyGroupsAddedRuleSets({
             }) === moduleName &&
             item.target.value !== getRuleSetTargetValue(target),
         );
-        return builtinConflict || customConflict;
+        return builtinConflict || customConflict
+          ? "目标分流组里已经有同名规则集，请先移除重复项。"
+          : null;
       }
 
       const group = customProxyGroups.find((entry) => entry.id === target.id);
-      if (!group) return true;
+      if (!group) return "目标代理组不存在、已隐藏或已停用，请重新选择";
       const targetName = group.name.trim();
-      if (!targetName) return true;
+      if (!targetName) return "目标代理组不存在、已隐藏或已停用，请重新选择";
       return customRuleSets.some(
         (ruleSet) =>
           ruleSet.id === item.id &&
@@ -199,14 +224,19 @@ export function ProxyGroupsAddedRuleSets({
             customProxyGroups,
           }) === targetName &&
           item.target.value !== getRuleSetTargetValue(target),
-      );
+      )
+        ? "目标分流组里已经有同名规则集，请先移除重复项。"
+        : null;
     },
     [
       builtinRuleEdits,
       customProxyGroups,
       customRuleSets,
+      enabledProxyGroups,
+      experimentalCnUseCnRuleSet,
       moduleNames,
       proxyGroupNameOverrides,
+      ruleProviderBaseUrl,
       visibleProxyGroupModules,
     ],
   );
@@ -233,10 +263,11 @@ export function ProxyGroupsAddedRuleSets({
     const path = normalizeRuleSetPathInput(draft.path);
     if (!target || !path) return;
 
-    if (hasConflict(item, target)) {
+    const conflictError = getConflictError(item, target, path);
+    if (conflictError) {
       toast({
         title: "规则集已存在",
-        description: "目标分流组里已经有同名规则集，请先移除重复项。",
+        description: conflictError,
         variant: "warning",
       });
       return;

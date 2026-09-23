@@ -1,12 +1,25 @@
 import { PROXY_GROUP_MODULES } from "@subboost/core/generator/proxy-groups";
+import { getModuleRuleOrderKey } from "@subboost/core/generator/module-rules";
 import {
+  EXPERIMENTAL_CN_RULE,
   getCustomRuleSetOrderKey,
   normalizePersistedRuleOrder,
   resolveAppliedRuleOrder,
 } from "@subboost/core/generator/rules";
 import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
 import { normalizeProxyGroupTargetRef } from "@subboost/core/proxy-group-targets";
-import { isValidRuleSetFormatBehavior, isValidRuleSetPathOrUrl, normalizeRuleSetPathInput } from "@subboost/core/rules/rule-model";
+import {
+  buildRuleSetUrlFromPath,
+  isValidRuleSetFormatBehavior,
+  isValidRuleSetPathOrUrl,
+  normalizeRuleSetPathInput,
+} from "@subboost/core/rules/rule-model";
+import {
+  canonicalRuleSetUrl,
+  createManualRuleSetId,
+  MANUAL_RULE_SET_NAME_CONFLICT_ERROR,
+  MANUAL_RULE_SET_URL_CONFLICT_ERROR,
+} from "@subboost/core/rules/manual-rule-set";
 import type {
   BuiltinRuleEdits,
   CustomProxyGroup,
@@ -16,6 +29,23 @@ import type {
   RuleSetBehavior,
 } from "@subboost/core/types/config";
 import type { RuleSetDraft } from "../definitions";
+
+type ManualRuleSetConflictState = {
+  enabledProxyGroups: string[];
+  customProxyGroups: CustomProxyGroup[];
+  customRuleSets: CustomRuleSet[];
+  builtinRuleEdits: BuiltinRuleEdits;
+  proxyGroupNameOverrides: Record<string, string>;
+  ruleProviderBaseUrl: string;
+  experimentalCnUseCnRuleSet: boolean;
+};
+
+type ManualRuleSetConflictInput = {
+  name: string;
+  url: string;
+  target: ProxyGroupTargetRef;
+  excludeId?: string;
+};
 
 export function normalizeRuleSetDraft(rule: RuleSetDraft): RuleSetDraft | null {
   if (!rule || typeof rule.id !== "string" || typeof rule.path !== "string") return null;
@@ -114,6 +144,74 @@ export function resolveRuleSetContainerTargetName(
     customProxyGroups.find((group) => group.id === id)?.name?.trim() ||
     null
   );
+}
+
+export function findManualRuleSetConflict(
+  state: ManualRuleSetConflictState,
+  input: ManualRuleSetConflictInput,
+): string | null {
+  const targetName = resolveRuleSetContainerTargetName(
+    input.target.id,
+    state.customProxyGroups,
+    state.proxyGroupNameOverrides,
+  );
+  const sourceUrl = canonicalRuleSetUrl(input.url);
+  if (!targetName || !sourceUrl) return null;
+
+  const normalizedName = createManualRuleSetId(input.name);
+  let nameConflict = false;
+  let urlConflict = false;
+
+  for (const ruleSet of state.customRuleSets) {
+    if (ruleSet.id === input.excludeId) continue;
+    if (!ruleTargetMatchesContainer(ruleSet.target, input.target, targetName)) continue;
+    if (createManualRuleSetId(ruleSet.name || ruleSet.id) === normalizedName) nameConflict = true;
+    if (
+      canonicalRuleSetUrl(buildRuleSetUrlFromPath(ruleSet.path, state.ruleProviderBaseUrl)) === sourceUrl
+    ) {
+      urlConflict = true;
+    }
+  }
+
+  const enabledModules = new Set(state.enabledProxyGroups);
+  if (input.target.kind === "module") enabledModules.add(input.target.id);
+  for (const proxyModule of PROXY_GROUP_MODULES) {
+    if (!enabledModules.has(proxyModule.id)) continue;
+    for (const rule of proxyModule.rules) {
+      const edit = state.builtinRuleEdits?.[getModuleRuleOrderKey(proxyModule.id, rule.id)];
+      if (edit?.enabled === false) continue;
+      const effectiveTarget: ProxyGroupRuleTarget = edit?.target || {
+        kind: "module",
+        id: proxyModule.id,
+      };
+      if (!ruleTargetMatchesContainer(effectiveTarget, input.target, targetName)) continue;
+      if (createManualRuleSetId(rule.id) === normalizedName) nameConflict = true;
+      if (
+        canonicalRuleSetUrl(buildRuleSetUrlFromPath(rule.path, state.ruleProviderBaseUrl)) === sourceUrl
+      ) {
+        urlConflict = true;
+      }
+    }
+  }
+
+  if (
+    state.experimentalCnUseCnRuleSet &&
+    enabledModules.has("cn") &&
+    ruleTargetMatchesContainer({ kind: "module", id: "cn" }, input.target, targetName)
+  ) {
+    if (createManualRuleSetId(EXPERIMENTAL_CN_RULE.id) === normalizedName) nameConflict = true;
+    if (
+      canonicalRuleSetUrl(
+        buildRuleSetUrlFromPath(EXPERIMENTAL_CN_RULE.path, state.ruleProviderBaseUrl),
+      ) === sourceUrl
+    ) {
+      urlConflict = true;
+    }
+  }
+
+  if (nameConflict) return MANUAL_RULE_SET_NAME_CONFLICT_ERROR;
+  if (urlConflict) return MANUAL_RULE_SET_URL_CONFLICT_ERROR;
+  return null;
 }
 
 export function compactBuiltinRuleEdits(edits: BuiltinRuleEdits): BuiltinRuleEdits {
