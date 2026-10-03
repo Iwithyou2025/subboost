@@ -1262,8 +1262,14 @@ delete_cmd() {
 }
 
 restart_cmd() {
+  load_env
   compose up -d --remove-orphans
   compose up -d --no-deps --force-recreate app
+  say "正在等待应用就绪..."
+  if ! wait_for_health; then
+    status_cmd
+    die "重启后健康检查未通过，请运行 'subboost logs' 查看日志。"
+  fi
   status_cmd
 }
 
