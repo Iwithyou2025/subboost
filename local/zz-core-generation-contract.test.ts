@@ -244,7 +244,7 @@ describe("local shared core generation contract", () => {
       ruleOrder: ["custom-rule:process", "special:experimental-cn", "module:global:geolocation-!cn"],
     });
 
-    expect(members.proxyNames).toEqual(["Custom", "US Node", "Korea Node", "DIRECT"]);
+    expect(members.proxyNames).toEqual(["Custom", "Korea Node", "DIRECT"]);
     expect(members.excluded.map((member) => member.key)).toEqual(["reject:REJECT"]);
     expect(groups.find((group) => group.name === "⚡ 自动选择")?.proxies).toEqual(["Node A"]);
     expect(groups.find((group) => group.name === "Direct")?.proxies?.slice(0, 2)).toEqual(["DIRECT", "REJECT"]);

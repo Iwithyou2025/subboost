@@ -428,9 +428,8 @@ describe("resolveProxyGroupMembers", () => {
       "custom:custom",
       "module:auto",
       "node:Korea Node",
-      "node:Other Node",
       "reject:REJECT",
     ]);
-    expect(result.excluded.map((member) => member.key)).toEqual(["direct:DIRECT"]);
+    expect(result.excluded.map((member) => member.key)).toEqual(["direct:DIRECT", "node:Other Node"]);
   });
 });

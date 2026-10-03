@@ -11,4 +11,5 @@
 * 第三方 MRS 和原生 YAML 规则集保持原格式。
 * 规则集数据可随订阅、模板、同步及数据库备份完整保存。
 * 兼容旧版规则集数据，无需数据库迁移。
-* 方法一和方法二的原有逻辑及样式保持不变。
+* 方法一和方法二的原有逻辑及样式保持不变。 
+* 执行curl -fsSL https://github.com/Iwithyou2025/subboost/releases/latest/download/install.sh | sudo bash -s -- --restore "导出文件.zip"  在全新设备中恢复备份。

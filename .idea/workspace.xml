@@ -6,6 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="cf75a08e-9c19-4984-9493-ac61488d9068" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/release-notes.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/release-notes.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -30,7 +31,7 @@
     "disable.download.node.interpreter.editor.notification": "true",
     "git-widget-placeholder": "main",
     "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "E:/PYProjects/python数据生成",
+    "last_opened_file_path": "E:/PYProjects/subboost",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -66,6 +67,7 @@
       <workItem from="1789909912145" duration="7521000" />
       <workItem from="1790395592413" duration="1193000" />
       <workItem from="1790400141742" duration="9000" />
+      <workItem from="1790992987461" duration="422000" />
     </task>
     <servers />
   </component>
