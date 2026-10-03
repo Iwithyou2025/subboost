@@ -189,3 +189,48 @@ it("keeps an existing source with no nodes visible and selected", () => {
   expect(mocks.store.proxyGroupAdvanced.youtube.sourceIds).toEqual(["empty"]);
   toggle(2); expect(selectedNodes()).toEqual(["Node A", "Node B"]);
 });
+
+function setRegex(kind: "include" | "exclude", value: string) {
+  const placeholder = kind === "include" ? "例如: IEPL|专线|家宽" : "例如: 测试|过期";
+  const input = render().find(e => e.type === "input" && e.props.placeholder === placeholder);
+  expect(input).toBeDefined();
+  input!.props.onChange({ target: { value } });
+}
+
+it("combines regex, source selection and manual node actions", () => {
+  reset();
+  click("移除全部节点"); click("添加全部节点");
+  setRegex("include", "Node A"); expect(selectedNodes()).toEqual(["Node A"]);
+  click("Node B"); expect(selectedNodes()).toEqual(["Node A"]);
+  setRegex("include", ""); expect(selectedNodes().sort()).toEqual(["Node A", "Node B"]);
+  setRegex("exclude", "Node A"); expect(selectedNodes()).toEqual(["Node B"]);
+  click("添加全部节点"); expect(selectedNodes()).toEqual(["Node B"]);
+  setRegex("include", "Node A"); expect(selectedNodes()).toEqual([]);
+  setRegex("exclude", ""); expect(selectedNodes()).toEqual(["Node A"]);
+  setRegex("include", ""); expect(selectedNodes().sort()).toEqual(["Node A", "Node B"]);
+  click("移除全部节点"); click("Node A");
+  setRegex("exclude", "Node A"); expect(selectedNodes()).toEqual([]);
+  setRegex("exclude", ""); expect(selectedNodes()).toEqual(["Node A"]);
+  click("添加全部节点");
+  toggle(0); setRegex("exclude", "Node A"); expect(selectedNodes()).toEqual([]);
+  setRegex("exclude", ""); expect(selectedNodes()).toEqual(["Node A"]);
+  toggle(0); expect(selectedNodes().sort()).toEqual(["Node A", "Node B"]);
+  setRegex("include", "["); setRegex("exclude", "[");
+  expect(selectedNodes().sort()).toEqual(["Node A", "Node B"]);
+  setRegex("include", ""); setRegex("exclude", "");
+  click("添加全部代理组"); setRegex("include", "no-node-matches");
+  expect(selectedNodes()).toEqual([]);
+  expect(names()).toContain("🚀 节点选择"); expect(names()).toContain("DIRECT"); expect(names()).toContain("REJECT");
+  click("移除全部代理组"); expect(names()).not.toContain("🚀 节点选择");
+});
+
+it("filters manually added nodes by region and restores on clear", () => {
+  reset();
+  mocks.store.nodes = [withNodeSourceId(node("US Node"), "s1"), withNodeSourceId(node("SG Node"), "s2")];
+  click("移除全部节点"); click("添加全部节点");
+  const region = () => render().find(e => e.type === "button" && e.props.children === "🇺🇸 美国")!;
+  region().props.onClick();
+  expect(names()).toContain("US Node"); expect(names()).not.toContain("SG Node");
+  region().props.onClick();
+  expect(names()).toContain("US Node"); expect(names()).toContain("SG Node");
+});

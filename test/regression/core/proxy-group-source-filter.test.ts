@@ -9,6 +9,24 @@ function node(name: string): ParsedNode {
 
 describe("manual proxy group members respect source selection", () => {
   it.each([
+    { includeRegex: "美国|香港", excludeRegex: "", expected: ["US 美国01", "HK 香港01"] },
+    { includeRegex: "", excludeRegex: "美国|香港", expected: ["JP 日本01"] },
+    { includeRegex: "美国|香港", excludeRegex: "香港", expected: ["US 美国01"] },
+  ])("matches Chinese regex alternatives for manually added nodes: $includeRegex / $excludeRegex", ({ includeRegex, excludeRegex, expected }) => {
+    const nodes = [node("US 美国01"), node("HK 香港01"), node("JP 日本01")];
+    const extraMembers = nodes.map((item) => ({ kind: "node" as const, name: item.name }));
+    const options = { nodes, defaultProxyNames: nodes.map((item) => item.name) };
+    expect(resolveProxyGroupMembers({
+      ...options,
+      advanced: { includeRegex, excludeRegex, extraMembers },
+    }).proxyNames).toEqual(expected);
+    expect(resolveProxyGroupMembers({
+      ...options,
+      advanced: { includeRegex: "", excludeRegex: "", extraMembers },
+    }).proxyNames).toEqual(nodes.map((item) => item.name));
+  });
+
+  it.each([
     { sourceIds: ["source-a"], expected: ["Node A", "Shared"] },
     { sourceIds: ["source-b"], expected: ["Node B", "Shared"] },
     { sourceIds: ["source-a", "source-b"], expected: ["Node A", "Node B", "Shared"] },
@@ -35,7 +53,7 @@ describe("manual proxy group members respect source selection", () => {
     );
   });
 
-  it("preserves manual filter overrides, non-node members, exclusions and order", () => {
+  it("preserves non-node members and order while filtering manual nodes", () => {
     const result = resolveProxyGroupMembers({
       nodes: [
         withNodeSourceId(node("Node A"), "source-a"),
@@ -62,7 +80,7 @@ describe("manual proxy group members respect source selection", () => {
         memberOrder: [{ kind: "custom", id: "custom" }, { kind: "node", name: "Node A" }],
       },
     });
-    expect(result.proxyNames).toEqual(["Custom", "Node A", "DIRECT", "REJECT", "Auto"]);
+    expect(result.proxyNames).toEqual(["Custom", "DIRECT", "REJECT", "Auto"]);
   });
 
 });

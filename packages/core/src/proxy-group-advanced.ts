@@ -330,18 +330,9 @@ export function resolveProxyGroupMembers(options: ResolveProxyGroupMembersOption
   }
 
   const candidates = Array.from(candidateMap.values());
-  const extraKeys = new Set((advanced.extraMembers || []).map(getProxyGroupMemberKey));
   const excludedKeys = new Set((advanced.excludedMembers || []).map(getProxyGroupMemberKey));
   const includedBase = candidates.filter((member) => {
     if (excludedKeys.has(member.key)) return false;
-    if (extraKeys.has(member.key)) {
-      const sourceIds = advanced.sourceIds;
-      if (member.ref.kind === "node" && sourceIds?.length) {
-        const node = nodeByName.get(member.ref.name);
-        return !!node && getNodeSourceIds(node).some((id) => sourceIds.includes(id));
-      }
-      return true;
-    }
     return nodePassesAdvancedFilters(member, nodeByName, advanced);
   });
 
