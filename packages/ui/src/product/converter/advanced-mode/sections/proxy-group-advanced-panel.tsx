@@ -15,7 +15,6 @@ import { resolveProxyGroupModuleName } from "@subboost/core/proxy-group-name";
 import { REGION_PRESETS } from "@subboost/core/proxy-group-advanced";
 import { getProxyGroupMemberKey } from "@subboost/core/proxy-group-targets";
 import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
-import { getNodeSourceIds } from "@subboost/core/subscription/node-source-state";
 import { isSubscriptionInfoNodeName } from "@subboost/core/subscription/info-node-name";
 import type {
   CustomProxyGroup,
@@ -126,7 +125,7 @@ const ADVANCED_PANEL_TITLE_ROW_CLASS = "mb-2 flex min-h-5 items-center gap-2";
 export function ProxyGroupAdvancedPanel({
   target,
   advanced,
-  onChange,
+  onChange: onAdvancedChange,
   rulesCount,
   rulesContent,
 }: {
@@ -150,6 +149,14 @@ export function ProxyGroupAdvancedPanel({
     testInterval,
     ruleProviderBaseUrl,
   } = useConfigStore();
+  const onChange = React.useCallback(
+    (patch: Partial<ProxyGroupAdvancedConfig>) => {
+      const selected = normalizeList(patch.sourceIds ?? advanced.sourceIds);
+      const sourceIds = selected.filter((id) => sources.some((source) => source.id === id));
+      onAdvancedChange(selected.length === sourceIds.length ? patch : { ...patch, sourceIds });
+    },
+    [advanced.sourceIds, onAdvancedChange, sources],
+  );
   const [draggingKey, setDraggingKey] = React.useState<string | null>(null);
   const effectiveNodes = React.useMemo(
     () => resolveNodeNameFilter(nodes, nodeNameFilter).effectiveNodes,
@@ -316,17 +323,18 @@ export function ProxyGroupAdvancedPanel({
   );
 
   const sourceOptions = React.useMemo(() => {
-    const sourceIdsInNodes = new Set<string>();
-    for (const node of activeNodes) {
-      for (const id of getNodeSourceIds(node)) sourceIdsInNodes.add(id);
+    const options = sources.map((source, index) => ({
+      id: source.id,
+      label: source.tag?.trim() || source.lastParsedTag?.trim() || `#${index + 1} ${source.type === "url" ? "订阅链接" : source.type === "yaml" ? "YAML 配置" : "节点链接"}`,
+    }));
+    // Keep stale selections visible until an edit removes them.
+    for (const id of normalizeList(advanced.sourceIds)) {
+      if (!options.some((source) => source.id === id)) {
+        options.push({ id, label: "已失效的导入源（可取消）" });
+      }
     }
-    return sources
-      .filter((source) => sourceIdsInNodes.has(source.id))
-      .map((source, index) => ({
-        id: source.id,
-        label: source.tag?.trim() || source.lastParsedTag?.trim() || `#${index + 1} ${source.type === "url" ? "订阅链接" : source.type === "yaml" ? "YAML 配置" : "节点链接"}`,
-      }));
-  }, [activeNodes, sources]);
+    return options;
+  }, [advanced.sourceIds, sources]);
 
   const moveMember = React.useCallback(
     (fromKey: string, toKey: string) => {
