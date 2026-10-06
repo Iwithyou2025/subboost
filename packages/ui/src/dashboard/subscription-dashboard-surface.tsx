@@ -92,6 +92,16 @@ function buildYamlDownloadFilename(name: string): string {
   return `${base}.yaml`;
 }
 
+function getNextUpdateAt(sub: Subscription): string | null {
+  if (!sub.autoUpdateInterval) return null;
+  const lastMark = Math.max(
+    Date.parse(sub.createdAt),
+    sub.lastUpdatedAt ? Date.parse(sub.lastUpdatedAt) : 0,
+    sub.autoUpdateState.lastAttemptedAt ? Date.parse(sub.autoUpdateState.lastAttemptedAt) : 0
+  );
+  return new Date(lastMark + sub.autoUpdateInterval * 1000).toISOString();
+}
+
 function triggerBrowserDownload(href: string, filename: string) {
   const anchor = document.createElement("a");
   anchor.href = href;
@@ -514,7 +524,7 @@ function SubscriptionRow({
             </span>
             <span className="flex items-center gap-1">
               <RefreshCw className="h-3.5 w-3.5" />
-              更新于 {formatDashboardDate(sub.lastUpdatedAt)}
+              下次更新时间：{sub.autoUpdateInterval ? formatDashboardDate(getNextUpdateAt(sub)) : "—"}
             </span>
             {sub.autoUpdateInterval && (
               <span className="flex items-center gap-1">

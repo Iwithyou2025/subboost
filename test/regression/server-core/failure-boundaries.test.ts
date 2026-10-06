@@ -9,7 +9,7 @@ import {
   parseAutoUpdateFailureSourceState,
   updateAutoUpdateFailureSourceState,
 } from "../../../packages/server-core/src/subscription/auto-update-failure";
-import { getLastAutoUpdateScheduleMark } from "../../../packages/server-core/src/subscription/auto-update-schedule";
+import { getLastAutoUpdateScheduleMark, resolveAutoUpdateScheduleState } from "../../../packages/server-core/src/subscription/auto-update-schedule";
 import {
   applyCronUpdateOutcome,
   createCronUpdateAccumulator,
@@ -161,6 +161,25 @@ describe("server-core failure boundary behavior", () => {
         lastAttemptedAt: new Date("2026-08-01T01:00:00.000Z"),
       })
     ).toEqual(new Date("2026-08-01T01:00:00.000Z"));
+  });
+
+  it("waits a full interval after the latest refresh or failed attempt", () => {
+    const createdAt = new Date("2026-10-01T00:00:00.000Z");
+    const now = new Date("2026-10-02T00:00:00.000Z");
+    const intervalSeconds = 86400;
+    expect(resolveAutoUpdateScheduleState({ createdAt, now, intervalSeconds }).due).toBe(true);
+    expect(resolveAutoUpdateScheduleState({
+      createdAt, now, intervalSeconds,
+      lastUpdatedAt: new Date("2026-10-01T23:30:00.000Z"),
+    }).due).toBe(false);
+    expect(resolveAutoUpdateScheduleState({
+      createdAt, now, intervalSeconds,
+      lastAttemptedAt: new Date("2026-10-01T23:30:00.000Z"),
+    }).due).toBe(false);
+    expect(resolveAutoUpdateScheduleState({
+      createdAt, now: new Date("2026-10-02T23:30:00.000Z"), intervalSeconds,
+      lastAttemptedAt: new Date("2026-10-01T23:30:00.000Z"),
+    }).due).toBe(true);
   });
 
   it("aborts the default DoH transport after its timeout", async () => {

@@ -611,6 +611,11 @@ describe("local subscription service", () => {
       ok: false,
       response: { error: "refresh failed" },
     });
+    expect(mocks.prisma.subscriptionAutoUpdateState.upsert).toHaveBeenLastCalledWith({
+      where: { subscriptionId: "sub-1" },
+      create: { subscriptionId: "sub-1", lastAttemptedAt: expect.any(Date) },
+      update: { lastAttemptedAt: expect.any(Date) },
+    });
 
     mocks.prisma.subscription.findFirst.mockResolvedValueOnce(null);
     await expect(refreshSubscription("owner-1", "missing")).resolves.toBeNull();

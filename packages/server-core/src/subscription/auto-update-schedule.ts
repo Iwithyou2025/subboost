@@ -1,8 +1,6 @@
 export type AutoUpdateScheduleState = {
   due: boolean;
   lastMarkAt: Date;
-  currentBucket: number;
-  lastBucket: number;
 };
 
 function timeOrNull(value: Date | null | undefined): number | null {
@@ -30,7 +28,6 @@ export function resolveAutoUpdateScheduleState(params: {
   intervalSeconds: number;
 }): AutoUpdateScheduleState {
   const intervalMs = Math.max(1, Math.floor(params.intervalSeconds)) * 1000;
-  const createdAtMs = params.createdAt.getTime();
   const nowMs = params.now.getTime();
   const lastMarkAt = getLastAutoUpdateScheduleMark({
     createdAt: params.createdAt,
@@ -39,12 +36,8 @@ export function resolveAutoUpdateScheduleState(params: {
   });
   const lastMarkMs = lastMarkAt.getTime();
 
-  const currentBucket = Math.floor((nowMs - createdAtMs) / intervalMs);
-  const lastBucket = Math.floor((lastMarkMs - createdAtMs) / intervalMs);
   return {
-    due: currentBucket > lastBucket,
+    due: nowMs >= lastMarkMs + intervalMs,
     lastMarkAt,
-    currentBucket,
-    lastBucket,
   };
 }

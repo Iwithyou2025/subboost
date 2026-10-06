@@ -398,6 +398,14 @@ export async function refreshSubscription(ownerId: string, id: string) {
   });
 
   if (!refreshResult.ok) {
+    if (row.autoUpdateInterval !== null) {
+      const attemptedAt = new Date();
+      await prisma.subscriptionAutoUpdateState.upsert({
+        where: { subscriptionId: row.id },
+        create: { subscriptionId: row.id, lastAttemptedAt: attemptedAt },
+        update: { lastAttemptedAt: attemptedAt },
+      });
+    }
     return {
       ok: false as const,
       response: buildManualRefreshFailureResponse({

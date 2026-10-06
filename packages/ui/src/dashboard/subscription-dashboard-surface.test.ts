@@ -352,6 +352,15 @@ describe("SubscriptionDashboardSurface", () => {
     expect(disabledHtml).not.toContain("自动更新已关闭：节点数连续超过配额");
   });
 
+  it("shows the next update based on the most recent refresh or failed attempt", () => {
+    const html = renderSurface(createAdapter(), { 0: [{
+      ...subscription,
+      autoUpdateState: { ...subscription.autoUpdateState, lastAttemptedAt: "2026-01-02T12:00:00.000Z" },
+    }], 1: false }).html;
+    expect(html).toContain("下次更新时间：date:2026-01-03T12:00:00.000Z");
+    expect(html).not.toContain("更新于 date:");
+  });
+
   it("keeps quota and source-failure recovery guidance separate in a mixed disabled notice", () => {
     const notice = buildAutoUpdateDisabledNotice([disabledSubscription, quotaDisabledSubscription]);
 
