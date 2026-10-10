@@ -97,7 +97,7 @@ describe("local subscription auto update service", () => {
     mocks.readSubscriptionSecrets.mockReturnValue({ config: { rules: [] }, urls: ["https://airport.example/sub"], nodes: [] });
     mocks.extractHostsFromSubscriptionUrls.mockReturnValue(["airport.example"]);
     mocks.buildSubscriptionFetchCallbacks.mockReturnValue({ fetchSubscription: vi.fn() });
-    mocks.refreshNodeSnapshot.mockResolvedValue({ savedSources: [{ url: "https://airport.example/sub" }] });
+    mocks.refreshNodeSnapshot.mockResolvedValue({ failedSources: [], savedSources: [{ url: "https://airport.example/sub" }] });
     mocks.resolveAutomaticRefreshFailureAnalysis.mockReturnValue({
       failureState: { externalFailureCount: 1 },
       failureReason: "all sources failed",
@@ -132,6 +132,21 @@ describe("local subscription auto update service", () => {
     );
   });
 
+  it("persists mixed URL results during automatic refresh", async () => {
+    const sources = [
+      { id: "a", type: "url", content: "https://a.example/sub" },
+      { id: "b", type: "url", content: "https://b.example/sub" },
+      { id: "static", type: "yaml", content: "proxies: []" },
+    ];
+    mocks.refreshNodeSnapshot.mockResolvedValueOnce({ savedSources: sources, failedSources: [sources[1]] });
+    await runLocalSubscriptionAutoUpdateCron(now);
+    expect(mocks.prisma.subscription.updateMany.mock.calls.at(-1)?.[0].data.encryptedConfig.encrypted.sourceUpdateResults)
+      .toEqual([
+        { id: "a", content: "https://a.example/sub", status: "success" },
+        { id: "b", content: "https://b.example/sub", status: "failed" },
+      ]);
+  });
+
   it("skips subscriptions that are not due", async () => {
     mocks.resolveAutoUpdateScheduleState.mockReturnValueOnce({ due: false });
 
@@ -159,7 +174,7 @@ describe("local subscription auto update service", () => {
         where: { id: "sub-1", updatedAt: subscription.updatedAt },
         data: expect.objectContaining({
           encryptedNodes: { encrypted: [{ name: "A" }] },
-          encryptedConfig: { encrypted: { rules: [], sources: [{ url: "https://airport.example/sub" }] } },
+          encryptedConfig: { encrypted: { rules: [], sources: [{ url: "https://airport.example/sub" }], sourceUpdateResults: [] } },
           encryptedSubscriptionInfo: { encrypted: { upload: 1 } },
         }),
       })
@@ -259,7 +274,8 @@ describe("local subscription auto update service", () => {
       create: { subscriptionId: "sub-1", ...quotaState },
       update: quotaState,
     });
-    expect(mocks.encryptJson).not.toHaveBeenCalled();
+    expect(mocks.prisma.subscription.updateMany.mock.calls.at(-1)?.[0].data).not.toHaveProperty("encryptedNodes");
+    expect(mocks.prisma.subscription.updateMany.mock.calls.at(-1)?.[0].data).toHaveProperty("encryptedConfig");
     expect(console.warn).toHaveBeenCalledWith(
       "[local-subscription-cron] node quota exceeded",
       expect.objectContaining({

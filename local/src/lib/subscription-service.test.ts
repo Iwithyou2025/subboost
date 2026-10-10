@@ -157,6 +157,7 @@ describe("local subscription service", () => {
     mocks.getAppUrl.mockReturnValue("http://127.0.0.1:3001");
     mocks.prepareRefreshCacheResult.mockReturnValue({ ok: true, nodeCount: 1 });
     mocks.refreshNodeSnapshot.mockResolvedValue({
+      failedSources: [],
       nodes: [node("Fresh")],
       savedSources: [{ id: "source-1", type: "url", content: "https://example.com/sub" }],
       subscriptionInfo: { upload: 1, total: 2048 },
@@ -619,6 +620,31 @@ describe("local subscription service", () => {
 
     mocks.prisma.subscription.findFirst.mockResolvedValueOnce(null);
     await expect(refreshSubscription("owner-1", "missing")).resolves.toBeNull();
+  });
+
+  it.each([true, false])("persists source results with automatic updates disabled (cache accepted=%s)", async (ok) => {
+    const sources = [
+      { id: "a", type: "url", content: "https://a.example/sub" },
+      { id: "b", type: "url", content: "https://b.example/sub" },
+      { id: "static", type: "nodes", content: "ss://static" },
+    ];
+    const original = row({ autoUpdateInterval: null, encryptedConfig: JSON.stringify({ sources }) });
+    mocks.prisma.subscription.findFirst.mockResolvedValueOnce(original);
+    mocks.refreshNodeSnapshot.mockResolvedValueOnce({
+      savedSources: sources, failedSources: [sources[1]], nodes: [node()], subscriptionInfo: {},
+    });
+    mocks.prepareRefreshCacheResult.mockReturnValueOnce({ ok, reason: "too_many_nodes" });
+    await refreshSubscription("owner-1", "sub-1");
+    const data = mocks.prisma.subscription.updateMany.mock.calls.at(-1)?.[0].data;
+    const config = JSON.parse(data.encryptedConfig);
+    expect(config.sourceUpdateResults).toEqual([
+      { id: "a", content: "https://a.example/sub", status: "success" },
+      { id: "b", content: "https://b.example/sub", status: "failed" },
+    ]);
+    expect(formatSubscription({ ...original, encryptedConfig: data.encryptedConfig })).toMatchObject({
+      sourceUpdateSummary: { total: 2, succeeded: 1, failed: 1 },
+    });
+    if (!ok) expect(data).not.toHaveProperty("encryptedNodes");
   });
 
   it("generates the YAML rule-provider variant only when explicitly requested", async () => {

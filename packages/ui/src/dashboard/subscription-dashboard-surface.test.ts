@@ -353,36 +353,31 @@ describe("SubscriptionDashboardSurface", () => {
   });
 
   it.each([
-    ["initial", null, {}, "等待首次更新", "bg-gray-400"],
-    ["success", "2026-01-02T00:00:00.000Z", {}, "更新成功", "bg-green-400"],
-    ["source failure", null, { lastFailedAt: "2026-01-03T00:00:00.000Z" }, "更新失败", "bg-red-400"],
-    ["quota failure", subscription.lastUpdatedAt, { lastNodeQuotaExceededAt: "2026-01-03T00:00:00.000Z" }, "更新失败", "bg-red-400"],
-    ["failed attempt", subscription.lastUpdatedAt, { lastAttemptedAt: "2026-01-03T00:00:00.000Z" }, "更新失败", "bg-red-400"],
-    ["recovered", subscription.lastUpdatedAt, { lastFailedAt: "2026-01-01T00:00:00.000Z" }, "更新成功", "bg-green-400"],
-    ["successful attempt", subscription.lastUpdatedAt, { lastAttemptedAt: subscription.lastUpdatedAt }, "更新成功", "bg-green-400"],
-  ])("renders a correctly sized update indicator for %s", (_name, lastUpdatedAt, state, label, color) => {
-    const html = renderSurface(createAdapter(), { 0: [{
-      ...subscription,
-      lastUpdatedAt,
-      autoUpdateState: { ...subscription.autoUpdateState, ...state },
-    }], 1: false }).html;
+    ["initial", { total: 2, succeeded: 0, failed: 0 }, "等待来源更新完成", "bg-gray-400"],
+    ["success", { total: 2, succeeded: 2, failed: 0 }, "全部更新成功", "bg-green-400"],
+    ["mixed", { total: 2, succeeded: 1, failed: 1 }, "部分更新成功，部分失败", "bg-yellow-400"],
+    ["failed", { total: 2, succeeded: 0, failed: 2 }, "全部更新失败", "bg-red-400"],
+    ["static only", { total: 0, succeeded: 0, failed: 0 }, "暂无可更新来源或等待首次更新", "bg-gray-400"],
+    ["new source", { total: 2, succeeded: 1, failed: 0 }, "等待来源更新完成", "bg-gray-400"],
+  ])("renders a correctly sized update indicator for %s", (_name, sourceUpdateSummary, label, color) => {
+    const html = renderSurface(createAdapter(), { 0: [{ ...subscription, sourceUpdateSummary }], 1: false }).html;
     expect(html).toContain(`aria-label="${label}"`);
     expect(html).toContain(`title="${label}"`);
     expect(html).toContain(`h-3 w-3 shrink-0 rounded-full ${color}`);
   });
 
-  it("turns a failed manual refresh red without changing other subscriptions", async () => {
+  it("reloads per-source results even when manual refresh returns an error", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const adapter = createAdapter({ refreshSubscription: vi.fn(async () => { throw new Error("offline"); }) });
-    const { setters } = renderSurface(adapter, { 0: [subscription, disabledSubscription], 1: false });
+    const updated = { ...subscription, sourceUpdateSummary: { total: 2, succeeded: 1, failed: 1 } };
+    const adapter = createAdapter({
+      refreshSubscription: vi.fn(async () => { throw new Error("refresh failed"); }),
+      fetchSubscriptions: vi.fn(async () => [updated]),
+    });
+    const { setters } = renderSurface(adapter, { 0: [subscription], 1: false });
     await mocks.captures.buttons.find((props: any) => props.title === "重新生成配置并刷新缓存").onClick();
     await flushPromises();
-    const update = setters[0].mock.calls.at(-1)?.[0];
-    const updated = update([subscription, disabledSubscription]);
-    expect(updated[1]).toBe(disabledSubscription);
-    expect(updated[0].lastUpdatedAt).toBe(subscription.lastUpdatedAt);
-    expect(updated[0].autoUpdateState.lastFailedAt).toEqual(expect.any(String));
-    expect(renderSurface(adapter, { 0: [updated[0]], 1: false }).html).toContain('aria-label="更新失败"');
+    expect(adapter.fetchSubscriptions).toHaveBeenCalled();
+    expect(setters[0]).toHaveBeenCalledWith([updated]);
   });
 
   it("shows the next update based on the most recent refresh or failed attempt", () => {

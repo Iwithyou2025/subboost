@@ -1,3 +1,4 @@
+import { withSourceUpdateResults } from "@subboost/server-core/subscription/source-update-status";
 import {
   applyCronUpdateOutcome,
   createCronUpdateAccumulator,
@@ -126,7 +127,10 @@ async function completeAllSourcesFailed(params: {
     params.subscription.id,
     params.subscription.updatedAt,
     params.decision.nextAutoUpdateState.state,
-    { ...(params.decision.nextAutoUpdateState.shouldDisableAutoUpdate ? { autoUpdateInterval: null } : {}) },
+    {
+      encryptedConfig: encryptJson(withSourceUpdateResults(params.prepared.config, params.prepared.snapshot)),
+      ...(params.decision.nextAutoUpdateState.shouldDisableAutoUpdate ? { autoUpdateInterval: null } : {}),
+    },
     params.assertLease
   );
   if (!persisted) return staleOutcome(params.prepared.requestedHosts);
@@ -152,7 +156,10 @@ async function completeNodeQuotaExceeded(params: {
     params.subscription.id,
     params.subscription.updatedAt,
     state,
-    { ...(params.decision.nextAutoUpdateState.shouldDisableAutoUpdate ? { autoUpdateInterval: null } : {}) },
+    {
+      encryptedConfig: encryptJson(withSourceUpdateResults(params.prepared.config, params.prepared.snapshot)),
+      ...(params.decision.nextAutoUpdateState.shouldDisableAutoUpdate ? { autoUpdateInterval: null } : {}),
+    },
     params.assertLease
   );
   if (!persisted) return staleOutcome(params.prepared.requestedHosts);
@@ -195,7 +202,7 @@ async function completeSuccess(params: {
     decision.nextAutoUpdateState.state,
     {
       encryptedNodes: encryptJson(refreshResult.cacheEntry.nodes),
-      encryptedConfig: encryptJson(config),
+      encryptedConfig: encryptJson(withSourceUpdateResults(config, params.prepared.snapshot)),
       encryptedSubscriptionInfo: encryptJson(refreshResult.cacheEntry.subscriptionInfo),
       lastUpdatedAt: cachedAt,
       cacheExpiresAt: buildSubscriptionCacheExpiry(cachedAt),
@@ -247,7 +254,7 @@ async function completeLocalRefresh(params: {
       params.subscription.id,
       params.subscription.updatedAt,
       decision.attemptedState,
-      {},
+      { encryptedConfig: encryptJson(withSourceUpdateResults(params.prepared.config, params.prepared.snapshot)) },
       params.assertLease
     );
     if (!persisted) return staleOutcome(params.prepared.requestedHosts);

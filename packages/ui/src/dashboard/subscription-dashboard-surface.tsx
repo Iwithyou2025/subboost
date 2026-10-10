@@ -93,19 +93,12 @@ function buildYamlDownloadFilename(name: string): string {
 }
 
 function getUpdateIndicator(sub: Subscription) {
-  const timestamp = (value?: string | null) => value ? Date.parse(value) || 0 : 0;
-  const succeededAt = timestamp(sub.lastUpdatedAt);
-  const failedAt = Math.max(
-    timestamp(sub.autoUpdateState.lastFailedAt),
-    timestamp(sub.autoUpdateState.lastNodeQuotaExceededAt),
-    timestamp(sub.autoUpdateState.disabledAt)
-  );
-  const attemptedAt = timestamp(sub.autoUpdateState.lastAttemptedAt);
-  if ((failedAt > 0 && failedAt >= succeededAt) || attemptedAt > succeededAt) {
-    return { label: "更新失败", color: "bg-red-400" };
-  }
-  if (succeededAt > 0) return { label: "更新成功", color: "bg-green-400" };
-  return { label: "等待首次更新", color: "bg-gray-400" };
+  const summary = sub.sourceUpdateSummary;
+  if (!summary || summary.total === 0) return { label: "暂无可更新来源或等待首次更新", color: "bg-gray-400" };
+  if (summary.succeeded === summary.total) return { label: "全部更新成功", color: "bg-green-400" };
+  if (summary.failed === summary.total) return { label: "全部更新失败", color: "bg-red-400" };
+  if (summary.succeeded > 0 && summary.failed > 0) return { label: "部分更新成功，部分失败", color: "bg-yellow-400" };
+  return { label: "等待来源更新完成", color: "bg-gray-400" };
 }
 
 function getNextUpdateAt(sub: Subscription): string | null {
@@ -271,11 +264,7 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
       toast(buildRefreshSubscriptionSuccessToast(data));
     } catch (error) {
       console.error("Failed to refresh subscription:", error);
-      const failedAt = new Date().toISOString();
-      setSubscriptions((current) => current.map((sub) => sub.id === id ? {
-        ...sub,
-        autoUpdateState: { ...sub.autoUpdateState, lastFailedAt: failedAt },
-      } : sub));
+      await fetchSubscriptions();
       toast({ title: error instanceof Error ? error.message : "刷新失败，请稍后重试", variant: "destructive" });
     } finally {
       setRefreshingId(null);

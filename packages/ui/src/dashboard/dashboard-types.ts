@@ -13,6 +13,7 @@ export interface SubscriptionAutoUpdateState {
 }
 
 export interface Subscription {
+  sourceUpdateSummary?: { total: number; succeeded: number; failed: number };
   id: string;
   name: string;
   token: string;

@@ -1,3 +1,4 @@
+import { summarizeSourceUpdates, withSourceUpdateResults } from "@subboost/server-core/subscription/source-update-status";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   generateClashYaml,
@@ -177,14 +178,17 @@ export function readSubscriptionSecrets(row: SubscriptionRow) {
 export function formatSubscription(row: SubscriptionRow): SubscriptionSummary {
   const secrets = readSubscriptionSecrets(row);
   const subscriptionUrl = buildLocalSubscriptionUrl(row.token);
-  return serializeSubscriptionSummaryData(row, secrets, {
-    subscriptionUrl,
-    yamlUrl: subscriptionUrl,
-    dateMode: "iso",
-    includeCounts: true,
-    includeFailureSourceState: false,
-    includeLastAttemptedAt: true,
-  }) as SubscriptionSummary;
+  return {
+    sourceUpdateSummary: summarizeSourceUpdates(secrets.config, secrets.urls),
+    ...serializeSubscriptionSummaryData(row, secrets, {
+      subscriptionUrl,
+      yamlUrl: subscriptionUrl,
+      dateMode: "iso",
+      includeCounts: true,
+      includeFailureSourceState: false,
+      includeLastAttemptedAt: true,
+    }),
+  } as SubscriptionSummary;
 }
 
 export function formatSubscriptionDetail(row: SubscriptionRow): SubscriptionDetail {
@@ -363,7 +367,7 @@ async function persistRefreshSuccess(params: {
       where: { id: params.subscriptionId, updatedAt: params.expectedUpdatedAt },
       data: {
         encryptedNodes: encryptJson(params.snapshot.nodes),
-        encryptedConfig: encryptJson({ ...params.config, sources: params.snapshot.savedSources }),
+        encryptedConfig: encryptJson(withSourceUpdateResults({ ...params.config, sources: params.snapshot.savedSources }, params.snapshot)),
         encryptedSubscriptionInfo: encryptJson(params.snapshot.subscriptionInfo),
         lastUpdatedAt: params.cachedAt,
         cacheExpiresAt: buildSubscriptionCacheExpiry(params.cachedAt),
@@ -398,14 +402,19 @@ export async function refreshSubscription(ownerId: string, id: string) {
   });
 
   if (!refreshResult.ok) {
-    if (row.autoUpdateInterval !== null) {
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.subscription.updateMany({
+        where: { id: row.id, updatedAt: row.updatedAt },
+        data: { encryptedConfig: encryptJson(withSourceUpdateResults(secrets.config, snapshot)), updatedAt: new Date() },
+      });
+      if (updated.count !== 1) return;
       const attemptedAt = new Date();
-      await prisma.subscriptionAutoUpdateState.upsert({
+      await tx.subscriptionAutoUpdateState.upsert({
         where: { subscriptionId: row.id },
         create: { subscriptionId: row.id, lastAttemptedAt: attemptedAt },
         update: { lastAttemptedAt: attemptedAt },
       });
-    }
+    });
     return {
       ok: false as const,
       response: buildManualRefreshFailureResponse({
