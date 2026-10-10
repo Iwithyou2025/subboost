@@ -92,6 +92,22 @@ function buildYamlDownloadFilename(name: string): string {
   return `${base}.yaml`;
 }
 
+function getUpdateIndicator(sub: Subscription) {
+  const timestamp = (value?: string | null) => value ? Date.parse(value) || 0 : 0;
+  const succeededAt = timestamp(sub.lastUpdatedAt);
+  const failedAt = Math.max(
+    timestamp(sub.autoUpdateState.lastFailedAt),
+    timestamp(sub.autoUpdateState.lastNodeQuotaExceededAt),
+    timestamp(sub.autoUpdateState.disabledAt)
+  );
+  const attemptedAt = timestamp(sub.autoUpdateState.lastAttemptedAt);
+  if ((failedAt > 0 && failedAt >= succeededAt) || attemptedAt > succeededAt) {
+    return { label: "更新失败", color: "bg-red-400" };
+  }
+  if (succeededAt > 0) return { label: "更新成功", color: "bg-green-400" };
+  return { label: "等待首次更新", color: "bg-gray-400" };
+}
+
 function getNextUpdateAt(sub: Subscription): string | null {
   if (!sub.autoUpdateInterval) return null;
   const lastMark = Math.max(
@@ -255,6 +271,11 @@ export function SubscriptionDashboardSurface({ adapter }: Props) {
       toast(buildRefreshSubscriptionSuccessToast(data));
     } catch (error) {
       console.error("Failed to refresh subscription:", error);
+      const failedAt = new Date().toISOString();
+      setSubscriptions((current) => current.map((sub) => sub.id === id ? {
+        ...sub,
+        autoUpdateState: { ...sub.autoUpdateState, lastFailedAt: failedAt },
+      } : sub));
       toast({ title: error instanceof Error ? error.message : "刷新失败，请稍后重试", variant: "destructive" });
     } finally {
       setRefreshingId(null);
@@ -505,6 +526,7 @@ function SubscriptionRow({
   onRefresh: (id: string) => Promise<void>;
   onSettings: (sub: Subscription) => void;
 }) {
+  const updateIndicator = getUpdateIndicator(sub);
   const quotaWarning = buildNodeQuotaWarning(sub.autoUpdateState);
   const quotaDisabled = isNodeQuotaAutoUpdateDisabled(sub.autoUpdateState);
   return (
@@ -523,7 +545,12 @@ function SubscriptionRow({
               创建于 {formatDashboardDate(sub.createdAt)}
             </span>
             <span className="flex items-center gap-1">
-              <RefreshCw className="h-3.5 w-3.5" />
+              <span
+                role="img"
+                aria-label={updateIndicator.label}
+                title={updateIndicator.label}
+                className={`inline-block h-3 w-3 shrink-0 rounded-full ${updateIndicator.color}`}
+              />
               下次更新时间：{sub.autoUpdateInterval ? formatDashboardDate(getNextUpdateAt(sub)) : "—"}
             </span>
             {sub.autoUpdateInterval && (
