@@ -28,7 +28,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check shell syntax
-        run: bash -n local/scripts/install.sh local/scripts/subboost.sh test/integration/https-compose.sh
+        run: |
+          bash -n local/scripts/install.sh
+          bash -n local/scripts/subboost.sh
+          bash -n test/integration/https-compose.sh
       - name: Validate HTTPS with real Docker and Caddy
         run: bash test/integration/https-compose.sh
 
