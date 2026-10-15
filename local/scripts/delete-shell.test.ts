@@ -91,7 +91,8 @@ describe("subboost delete", () => {
           "image ls "*) printf 'subboost-rollback:update-20260916\n' ;;
           "image inspect "*) [ -e "$images" ] ;;
           "image rm "*) rm -f "$images" ;;
-          "ps -aq "*|"volume ls -q "*|"network ls -q "*) [ ! -e "$resources" ] ;;
+          "network ls -q "*) return 0 ;;
+          "ps -aq "*|"volume ls -q "*) [ ! -e "$resources" ] ;;
         esac
       }
       systemctl() {
