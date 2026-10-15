@@ -39,6 +39,8 @@
 - 部署文档：[高级部署 - 编译源码构建，速度慢配置要求高](https://docs.subboost.org/deploy/advanced)
 - 配置教程：[草履虫也能学会的 Clash 配置：UI 界面一键配置精确分流、链式代理](https://ryanvan.com/t/topic/59?u=ryan)
 
+- 服务器 HTTPS 安装：[安装模式、证书导入与故障处理](docs/server-https-install.md)
+
 ## 开发说明
 
 开发者可以从源码启动本地开发环境：

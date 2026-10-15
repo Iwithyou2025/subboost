@@ -157,7 +157,7 @@ download_to_temp() {
       cp "$url" "$output"
       ;;
     http://*|https://*)
-      curl -fsSL "$url" -o "$output"
+      curl --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 180 -fsSL "$url" -o "$output"
       ;;
     *)
       cp "$url" "$output"
@@ -619,7 +619,7 @@ install_docker_engine() {
   require_curl
   local script="$TMP_DIR/get-docker.sh"
   mkdir -p "$TMP_DIR"
-  curl -fsSL https://get.docker.com -o "$script"
+  download_to_temp https://get.docker.com "$script"
   run_root sh "$script"
   if command -v systemctl >/dev/null 2>&1; then
     run_root systemctl enable --now docker || true
@@ -689,7 +689,9 @@ docker_login_if_needed() {
 }
 
 compose() {
-  (cd "$SUBBOOST_HOME" && docker_cmd compose --project-directory "$SUBBOOST_HOME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@")
+  local -a https_files=()
+  if [ -f "$SUBBOOST_HOME/https-compose.yml" ]; then https_files=(-f "$SUBBOOST_HOME/https-compose.yml"); fi
+  (cd "$SUBBOOST_HOME" && docker_cmd compose --project-directory "$SUBBOOST_HOME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "${https_files[@]}" "$@")
 }
 
 subboost_app_container_id() {
@@ -756,7 +758,7 @@ wait_for_health() {
   local base="http://127.0.0.1:$(port_number "$port")"
   local index
   for index in $(seq 1 60); do
-    if curl -fsS "$base/api/health/live" >/dev/null 2>&1 && curl -fsS "$base/api/health/ready" >/dev/null 2>&1; then
+    if curl --connect-timeout 2 --max-time 5 -fsS "$base/api/health/live" >/dev/null 2>&1 && curl --connect-timeout 2 --max-time 5 -fsS "$base/api/health/ready" >/dev/null 2>&1; then
       return 0
     fi
     if [ "$((index % 10))" = "0" ]; then
@@ -865,7 +867,256 @@ commit_candidate_install() {
   run_root mv -f "$staged_manager" "$SUBBOOST_BIN" || return 1
 }
 
+# Server install state is persisted separately from release-owned Compose files.
+HTTPS_SUPPORT_VERSION=1
+INSTALL_MODE="${SUBBOOST_INSTALL_MODE:-}"
+TLS_MODE="${SUBBOOST_TLS_MODE:-}"
+HTTPS_DOMAIN="${SUBBOOST_DOMAIN:-}"
+
+retry_network() {
+  local attempt
+  for attempt in 1 2 3; do
+    if "$@"; then return 0; fi
+    warn "网络操作失败（$attempt/3），请检查网络、DNS 或镜像仓库权限。"
+    [ "$attempt" = 3 ] || sleep "$((attempt * 2))"
+  done
+  return 1
+}
+
+https_dependencies() {
+  local missing=0 tool
+  for tool in curl openssl python3 timeout; do command -v "$tool" >/dev/null 2>&1 || missing=1; done
+  [ "$missing" = 1 ] || return 0
+  say "正在安装 HTTPS 配置所需的依赖..."
+  if command -v apt-get >/dev/null 2>&1; then
+    retry_network run_root apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update || die "软件源不可用，请修复网络后重试。"
+    retry_network run_root env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y curl ca-certificates openssl python3 coreutils || die "依赖安装失败。"
+  elif command -v dnf >/dev/null 2>&1; then
+    retry_network run_root dnf install -y curl ca-certificates openssl python3 coreutils || die "依赖安装失败。"
+  elif command -v yum >/dev/null 2>&1; then
+    retry_network run_root yum install -y curl ca-certificates openssl python3 coreutils || die "依赖安装失败。"
+  else
+    die "请安装 curl、ca-certificates、openssl、python3、coreutils 后重试。"
+  fi
+  for tool in curl openssl python3 timeout; do command -v "$tool" >/dev/null 2>&1 || die "依赖仍不可用: $tool"; done
+}
+
+valid_https_domain() {
+  local domain="$1" label
+  [ "${#domain}" -le 253 ] && [[ "$domain" == *.* ]] || return 1
+  [[ ! "$domain" =~ ^[0-9.]+$ ]] || return 1
+  [[ "$domain" =~ ^[a-z0-9.-]+$ ]] || return 1
+  local -a labels
+  IFS=. read -ra labels <<< "$domain"
+  [[ "$domain" != *. ]] || return 1
+  for label in "${labels[@]}"; do
+    [ "${#label}" -le 63 ] && [[ "$label" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || return 1
+  done
+}
+
+select_install_mode() {
+  local answer
+  while true; do
+    answer="${INSTALL_MODE:-$(prompt $'请选择安装方式：\n1. 本地安装（保持现有逻辑）\n2. 服务器安装（HTTPS）\n请选择 [1]: ' 1)}"
+    case "$answer" in
+      1|local) INSTALL_MODE=local; return ;;
+      2|server) INSTALL_MODE=server; break ;;
+      *) [ -z "$INSTALL_MODE" ] || die "SUBBOOST_INSTALL_MODE 必须为 local 或 server。"; warn "请输入 1 或 2。" ;;
+    esac
+  done
+  https_dependencies
+  while true; do
+    answer="${HTTPS_DOMAIN:-$(prompt '请输入访问域名（不含路径）: ' '')}"
+    answer="${answer#https://}"; answer="${answer%/}"; answer="${answer,,}"
+    if valid_https_domain "$answer"; then HTTPS_DOMAIN="$answer"; break; fi
+    [ -z "$HTTPS_DOMAIN" ] && [ "$SUBBOOST_ASSUME_YES" != 1 ] && [ -n "$answer" ] || die "需要有效的公网域名。"
+    warn "域名格式无效，请重新输入。"
+  done
+  while true; do
+    answer="${TLS_MODE:-$(prompt $'证书方式：\n1. 自动申请（关闭橙云，域名直连，开放 TCP 443）\n2. 导入已有证书（可直接粘贴）\n请选择 [1]: ' 1)}"
+    case "$answer" in
+      1|auto) TLS_MODE=auto; break ;;
+      2|import) TLS_MODE=import; break ;;
+      *) [ -z "$TLS_MODE" ] || die "SUBBOOST_TLS_MODE 必须为 auto 或 import。"; warn "请输入 1 或 2。" ;;
+    esac
+  done
+  # Bound DNS timeout: bad resolvers must not hang installation indefinitely.
+  timeout 20 python3 - "$HTTPS_DOMAIN" <<'PYDNS' || die "域名 DNS 查询失败。请先设置 A/AAAA 记录，检查服务器 DNS 后重试。"
+import socket, sys
+addresses = sorted({x[4][0] for x in socket.getaddrinfo(sys.argv[1], 443, type=socket.SOCK_STREAM)})
+if not addresses: raise SystemExit(1)
+print("域名当前解析: " + ", ".join(addresses))
+PYDNS
+  say "请确认云安全组允许 TCP 443；脚本不会清空防火墙或停止其他项目。"
+  if [ "$TLS_MODE" = auto ]; then
+    say "自动申请和续期均需域名直连本机 443；请保持橙云关闭，并清理错误的 AAAA 记录。"
+  else
+    say "Cloudflare 源站证书需保持橙云开启，并使用完全（严格）模式。"
+  fi
+}
+
+# Read /dev/tty, never pipeline stdin (curl | bash). Silent input keeps private
+# key material out of terminal recordings; DONE is an explicit multiline end.
+read_pem_from_tty() {
+  local output="$1" description="$2" line="" bytes=0
+  [ "$SUBBOOST_ASSUME_YES" != 1 ] || return 1
+  (
+    exec 3<>/dev/tty || exit 1
+    [ -t 3 ] || exit 1
+    printf '\n请粘贴完整%s（含 BEGIN/END 标记），另起一行输入 DONE 并回车结束。输入不回显：\n' "$description" >&3
+    umask 077
+    : > "$output"
+    while IFS= read -r -s line <&3; do
+      line="${line%$'\r'}"
+      [ "$line" != DONE ] || { printf '\n接收完成。\n' >&3; exit 0; }
+      bytes=$((bytes + ${#line} + 1))
+      [ "$bytes" -le 131072 ] || { printf '\n证书输入过长。\n' >&3; exit 1; }
+      printf '%s\n' "$line" >> "$output"
+    done
+    exit 1
+  )
+}
+
+validate_https_certificate() {
+  local cert="$1" key="$2" domain="$3" cert_pub key_pub
+  openssl x509 -in "$cert" -noout -checkend 86400 >/dev/null 2>&1 || { warn "证书无效、已过期或将在 24 小时内到期。"; return 1; }
+  openssl x509 -in "$cert" -noout -checkhost "$domain" 2>/dev/null | grep -q 'does match certificate' || { warn "证书不覆盖域名 $domain。"; return 1; }
+  # Validate notBefore as well; OpenSSL checkend only checks notAfter.
+  python3 - "$cert" <<'PYDATE' || return 1
+import ssl, sys, time
+cert = ssl._ssl._test_decode_cert(sys.argv[1])
+if ssl.cert_time_to_seconds(cert['notBefore']) > time.time():
+    raise SystemExit('证书尚未生效，请检查系统时间。')
+PYDATE
+  openssl pkey -in "$key" -passin pass: -check -noout >/dev/null 2>&1 || { warn "私钥无效或已加密，请提供未加密的 PEM 私钥。"; return 1; }
+  cert_pub="$(openssl x509 -in "$cert" -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256)" || return 1
+  key_pub="$(openssl pkey -in "$key" -passin pass: -pubout -outform DER | openssl dgst -sha256)" || return 1
+  [ "$cert_pub" = "$key_pub" ] || { warn "证书与私钥不匹配。"; return 1; }
+}
+
+collect_https_certificate() {
+  local cert="$TMP_DIR/origin.pem" key="$TMP_DIR/origin.key" method
+  while true; do
+    if [ -n "${SUBBOOST_TLS_CERT_FILE:-}" ] || [ -n "${SUBBOOST_TLS_KEY_FILE:-}" ]; then
+      [ -f "${SUBBOOST_TLS_CERT_FILE:-}" ] && [ -f "${SUBBOOST_TLS_KEY_FILE:-}" ] || die "必须同时提供证书和私钥文件。"
+      install -m 600 "$SUBBOOST_TLS_CERT_FILE" "$cert"
+      install -m 600 "$SUBBOOST_TLS_KEY_FILE" "$key"
+      validate_https_certificate "$cert" "$key" "$HTTPS_DOMAIN" || die "证书检查失败。"
+      break
+    fi
+    method="$(prompt '证书输入方式：1. 直接粘贴  2. 文件路径 [1]: ' 1)"
+    case "$method" in
+      1)
+        read_pem_from_tty "$cert" '证书/证书链（不是单独的公钥）' || die "未完成证书输入。"
+        read_pem_from_tty "$key" '私钥' || die "未完成私钥输入。"
+        ;;
+      2)
+        local source_cert source_key
+        source_cert="$(prompt '证书文件路径: ' '')"
+        source_key="$(prompt '私钥文件路径: ' '')"
+        if [ ! -f "$source_cert" ] || [ ! -f "$source_key" ]; then warn "文件不存在。"; continue; fi
+        install -m 600 "$source_cert" "$cert"
+        install -m 600 "$source_key" "$key"
+        ;;
+      *) warn "请输入 1 或 2。"; continue ;;
+    esac
+    if validate_https_certificate "$cert" "$key" "$HTTPS_DOMAIN"; then break; fi
+    rm -f "$cert" "$key"
+    [ "$SUBBOOST_ASSUME_YES" != 1 ] || die "证书检查失败。"
+    warn "请重新输入证书和私钥。"
+  done
+}
+
+prepare_https_config() {
+  [ "$INSTALL_MODE" = server ] || return 0
+  port_is_free 443 || die "TCP 443 已被占用。请自行调整冲突服务；未停止任何现有项目。"
+  local version
+  version="$(docker_cmd compose version --short)"; version="${version#v}"
+  python3 - "$version" <<'PYVERSION' || die "服务器模式需要 Docker Compose 2.24.4 或更新版本（支持 !override）。"
+import re, sys
+m = re.match(r'(\d+)\.(\d+)\.(\d+)', sys.argv[1])
+if not m or tuple(map(int, m.groups())) < (2,24,4): raise SystemExit(1)
+PYVERSION
+  [ "$TLS_MODE" != import ] || collect_https_certificate
+  HTTPS_FILES_CREATED=1
+  prepare_private_directory "$SUBBOOST_HOME/https"
+  if [ "$TLS_MODE" = import ]; then
+    install_secret_file "$TMP_DIR/origin.pem" "$SUBBOOST_HOME/https/origin.pem"
+    install_secret_file "$TMP_DIR/origin.key" "$SUBBOOST_HOME/https/origin.key"
+  fi
+  local caddyfile="$TMP_DIR/Caddyfile"
+  {
+    printf '{\n    auto_https disable_redirects\n}\n\nhttps://%s {\n' "$HTTPS_DOMAIN"
+    if [ "$TLS_MODE" = import ]; then
+      printf '    tls /etc/subboost-tls/origin.pem /etc/subboost-tls/origin.key\n'
+    else
+      printf '    tls {\n        issuer acme {\n            disable_http_challenge\n        }\n    }\n'
+    fi
+    printf '    header Referrer-Policy "no-referrer"\n    reverse_proxy app:3000 {\n        header_down -Referrer-Policy\n    }\n}\n'
+  } > "$caddyfile"
+  install_secret_file "$caddyfile" "$SUBBOOST_HOME/https/Caddyfile"
+  cat > "$TMP_DIR/https.yml" <<'YAML'
+# Locally owned: always load AFTER the release-owned Compose file.
+services:
+  app:
+    ports: !override
+      - "127.0.0.1:${SUBBOOST_PORT}:3000"
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "443:443/tcp"
+    volumes:
+      - ./https:/etc/subboost-tls:ro
+      - subboost-caddy-data:/data
+      - subboost-caddy-config:/config
+    command: ["caddy", "run", "--config", "/etc/subboost-tls/Caddyfile", "--adapter", "caddyfile"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  subboost-caddy-data:
+  subboost-caddy-config:
+YAML
+  install_secret_file "$TMP_DIR/https.yml" "$SUBBOOST_HOME/https-compose.yml"
+  set_env_value SUBBOOST_INSTALL_MODE server
+  set_env_value SUBBOOST_TLS_MODE "$TLS_MODE"
+  set_env_value APP_URL "https://$HTTPS_DOMAIN"
+  set_env_value SUBBOOST_PORT "$(random_free_port)"
+  set_env_value TRUST_PROXY_HEADERS false
+  # Compose prioritizes exported variables over --env-file. Do not let an
+  # inherited old APP_URL or port override the server configuration just saved.
+  unset APP_URL SUBBOOST_PORT TRUST_PROXY_HEADERS
+}
+
+https_start_and_check() {
+  [ "$INSTALL_MODE" = server ] || return 0
+  compose run --rm --no-deps caddy caddy validate --config /etc/subboost-tls/Caddyfile --adapter caddyfile || return 1
+  compose up -d caddy || return 1
+  local i code=""
+  for i in $(seq 1 30); do
+    # Imported Origin CA certs are not publicly trusted. -k is LOCAL ONLY.
+    local -a verification=()
+    [ "$TLS_MODE" != import ] || verification=(-k)
+    if curl --noproxy '*' "${verification[@]}" -fsS --connect-timeout 3 --max-time 5 \
+      --resolve "$HTTPS_DOMAIN:443:127.0.0.1" "https://$HTTPS_DOMAIN/api/health/ready" >/dev/null 2>&1; then break; fi
+    [ "$i" = 30 ] && { warn "本机 HTTPS 未就绪：自动证书请检查 DNS/橙云/443、防火墙和系统时间；运行 subboost logs 检查。"; return 1; }
+    [ "$((i % 5))" != 0 ] || say "正在等待 HTTPS 就绪（$i/30）..."
+    sleep 2
+  done
+  code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 "https://$HTTPS_DOMAIN/api/health/ready" 2>/dev/null)" || code=000
+  case "$code" in
+    200) say "公网 HTTPS 验证通过。" ;;
+    522) warn "本机正常，但 Cloudflare 522：检查 DNS 指向、云安全组 TCP 443、Docker FORWARD/DOCKER-USER 防火墙和完全（严格）模式。"; return 1 ;;
+    525|526) warn "Cloudflare TLS 校验失败：检查源站证书和完全（严格）模式。"; return 1 ;;
+    *) warn "本机正常，但公网 HTTPS 检查失败（HTTP $code）：检查 A/AAAA、云防火墙、代理模式及证书信任。"; return 1 ;;
+  esac
+}
+
 main() {
+  umask 077
   require_linux
   parse_args "$@"
   local live_env="$ENV_FILE"
@@ -876,7 +1127,14 @@ main() {
     fi
     die "Existing installation metadata was found. Use 'subboost update' or inspect the incomplete installation before retrying."
   fi
-  if [ -n "$RESTORE_ARCHIVE" ]; then prepare_restore_archive; fi
+  if [ -e "$SUBBOOST_HOME/https-compose.yml" ] || [ -e "$SUBBOOST_HOME/https" ]; then
+    die "发现已有 HTTPS 配置，请先检查未完成的安装，不会覆盖已有证书。"
+  fi
+  select_install_mode
+  if [ -n "$RESTORE_ARCHIVE" ]; then
+    if ! command -v python3 >/dev/null 2>&1 && ! command -v unzip >/dev/null 2>&1; then https_dependencies; fi
+    prepare_restore_archive
+  fi
   require_curl
   fetch_release_manifest
 
@@ -896,6 +1154,12 @@ main() {
   fi
   compose_url="${SUBBOOST_COMPOSE_URL:-${backup_compose_url:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_compose:-$DEFAULT_COMPOSE_URL}")}}"
   manager_url="${SUBBOOST_MANAGER_URL:-${backup_manager_url:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_manager:-$DEFAULT_MANAGER_URL}")}}"
+  if [ "$INSTALL_MODE" = server ]; then
+    # Old backups may pin pre-HTTPS managers. Keep their application image and
+    # encryption key, but use this release's HTTPS-aware deployment tooling.
+    compose_url="${SUBBOOST_COMPOSE_URL:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_compose:-$DEFAULT_COMPOSE_URL}")}"
+    manager_url="${SUBBOOST_MANAGER_URL:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_manager:-$DEFAULT_MANAGER_URL}")}"
+  fi
   [ -n "$image" ] && [ -n "$compose_url" ] && [ -n "$manager_url" ] || die "Release metadata is missing image, composeUrl, or managerUrl."
 
   if [ -n "$RESTORE_ARCHIVE" ]; then
@@ -929,7 +1193,7 @@ main() {
   local volumes_before="$TMP_DIR/volumes.before"
   umask 077
   download_to_temp "$compose_url" "$COMPOSE_FILE"
-  if [ -x "$SUBBOOST_BIN" ]; then
+  if [ -x "$SUBBOOST_BIN" ] && [ "$INSTALL_MODE" != server ]; then
     say "Existing SubBoost manager found; reusing it."
     cp "$SUBBOOST_BIN" "$candidate_manager"
   else
@@ -944,7 +1208,7 @@ main() {
     ensure_env_value SUBBOOST_RELEASE_URL "$SUBBOOST_UPDATE_RELEASE_URL"
     ensure_env_value SUBBOOST_COMPOSE_URL "$compose_url"
     ensure_env_value SUBBOOST_MANAGER_URL "$manager_url"
-    if ! port_is_free "$(env_value SUBBOOST_PORT)"; then
+    if [ "$INSTALL_MODE" != server ] && ! port_is_free "$(env_value SUBBOOST_PORT)"; then
       die "Backup SUBBOOST_PORT is already in use: $(env_value SUBBOOST_PORT)"
     fi
   else
@@ -969,6 +1233,7 @@ main() {
     database_url="postgresql://$db_user:$db_pass@db:5432/$db_name?schema=public"
     ensure_env_value DATABASE_URL "$database_url"
 
+    if [ "$INSTALL_MODE" != server ]; then
     current_port="${SUBBOOST_PORT:-$(env_value SUBBOOST_PORT || true)}"
     current_url="${APP_URL:-$(env_value APP_URL || true)}"
 
@@ -984,6 +1249,19 @@ main() {
     final_url="$(normalize_app_url "$(url_without_port "$input_url")" "$selected_port")"
     set_env_value SUBBOOST_PORT "$selected_port"
     set_env_value APP_URL "$final_url"
+    fi
+  fi
+
+  if [ "$INSTALL_MODE" = local ]; then
+    # A restored server backup must not claim HTTPS is configured locally.
+    if [ -n "$(env_value SUBBOOST_INSTALL_MODE)" ]; then set_env_value SUBBOOST_INSTALL_MODE local; fi
+    if [ -n "$(env_value SUBBOOST_TLS_MODE)" ]; then set_env_value SUBBOOST_TLS_MODE none; fi
+  fi
+  prepare_https_config
+  if [ "$INSTALL_MODE" = server ]; then
+    set_env_value SUBBOOST_COMPOSE_URL "$compose_url"
+    set_env_value SUBBOOST_MANAGER_URL "$manager_url"
+    grep -q '^HTTPS_SUPPORT_VERSION=1$' "$candidate_manager" || die "管理脚本不支持 HTTPS。请使用包含此功能的同版本发行资产。"
   fi
 
   compose config >/dev/null
@@ -994,7 +1272,7 @@ main() {
   done
   docker_cmd volume ls -q > "$volumes_before"
   say "Pulling SubBoost image before creating containers..."
-  compose pull
+  retry_network compose pull || die "镜像下载失败；尚未创建应用容器，可修复网络后重试。"
   if [ -n "$RESTORE_ARCHIVE" ]; then
     say "Starting PostgreSQL for backup migration..."
     if ! compose up -d db || ! wait_for_database; then
@@ -1037,6 +1315,11 @@ main() {
     fi
   fi
 
+  if ! https_start_and_check; then
+    warn "应用及数据已保留，但 HTTPS 尚未通过验证，不能视为安装成功。修复网络后运行 sudo subboost restart 和 sudo subboost doctor。"
+    exit 1
+  fi
+
   say ""
   say "SubBoost 已启动。"
   say "访问地址: $(env_value APP_URL)"
@@ -1054,7 +1337,7 @@ main() {
 }
 
 if [ "${SUBBOOST_SCRIPT_SOURCE_ONLY:-0}" != "1" ]; then
-  trap 'rm -rf "$TMP_DIR"' EXIT
+  trap 'if [ "${HTTPS_FILES_CREATED:-0}" = 1 ] && [ ! -f "$SUBBOOST_HOME/.env" ]; then sudo_do rm -f "$SUBBOOST_HOME/https-compose.yml"; sudo_do rm -rf "$SUBBOOST_HOME/https"; fi; rm -rf "$TMP_DIR"' EXIT
   DOCKER_RUNNER="docker"
   main "$@"
 fi

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+HTTPS_SUPPORT_VERSION=1
+
 DEFAULT_HOME="/opt/subboost"
 DEFAULT_STABLE_RELEASE_URL="https://github.com/Iwithyou2025/subboost/releases/latest/download/release.json"
 DEFAULT_BACKUP_RETENTION_COUNT="10"
@@ -78,7 +80,13 @@ compose_files() {
   shift 2
   [ -f "$compose_file" ] || die "Missing $compose_file"
   [ -f "$env_file" ] || die "Missing $env_file"
-  (cd "$SUBBOOST_HOME" && docker_cmd compose --project-directory "$SUBBOOST_HOME" --env-file "$env_file" -f "$compose_file" "$@")
+  local -a https_files=()
+  if [ -f "$SUBBOOST_HOME/https-compose.yml" ]; then
+    https_files=(-f "$SUBBOOST_HOME/https-compose.yml")
+  elif [ "$(env_file_value "$env_file" SUBBOOST_INSTALL_MODE)" = server ]; then
+    die "HTTPS 配置缺失，拒绝启动可能暴露 HTTP 的服务。请恢复 https-compose.yml 和 https 目录。"
+  fi
+  (cd "$SUBBOOST_HOME" && docker_cmd compose --project-directory "$SUBBOOST_HOME" --env-file "$env_file" -f "$compose_file" "${https_files[@]}" "$@")
 }
 
 compose_files_with_image() {
@@ -101,7 +109,7 @@ download_to_temp() {
   case "$url" in
     file://*) cp "${url#file://}" "$output" ;;
     /*) cp "$url" "$output" ;;
-    http://*|https://*) curl -fsSL "$url" -o "$output" ;;
+    http://*|https://*) curl --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 180 -fsSL "$url" -o "$output" ;;
     *) cp "$url" "$output" ;;
   esac
 }
@@ -567,13 +575,13 @@ health_status_code() {
   if ! command -v curl >/dev/null 2>&1; then
     printf 'curl-missing\n'
   else
-    if curl -fsS "$base/api/health/live" >/dev/null 2>&1; then
+    if curl --connect-timeout 2 --max-time 5 -fsS "$base/api/health/live" >/dev/null 2>&1; then
       live_ok=1
     else
       live_ok=0
     fi
 
-    if [ "$live_ok" = "1" ] && curl -fsS "$base/api/health/ready" >/dev/null 2>&1; then
+    if [ "$live_ok" = "1" ] && curl --connect-timeout 2 --max-time 5 -fsS "$base/api/health/ready" >/dev/null 2>&1; then
       printf 'ok\n'
     elif [ "$live_ok" = "1" ]; then
       printf 'not-ready\n'
@@ -688,6 +696,9 @@ else
     manager_present=1
   fi
 fi
+  if [ -f "$SUBBOOST_HOME/https-compose.yml" ] && [ -s "$candidate_manager" ]; then
+    grep -q '^HTTPS_SUPPORT_VERSION=1$' "$candidate_manager" || die "目标管理脚本不支持 HTTPS，已取消升级以保留安全配置。"
+  fi
   [ -n "$manager_url" ] && manager_present=1
   [ -n "$image" ] || die "SUBBOOST_IMAGE is missing."
   read_env_file > "$candidate_env"
@@ -1261,15 +1272,24 @@ delete_cmd() {
   say "SubBoost 的所有数据、服务和应用镜像均已删除。"
 }
 
+check_public_https() {
+  [ "${SUBBOOST_INSTALL_MODE:-local}" = server ] || return 0
+  if ! curl --noproxy '*' -fsS --connect-timeout 10 --max-time 25 "$APP_URL/api/health/ready" >/dev/null; then
+    die "本机应用可用，但公网 HTTPS 检查失败。检查 Caddy、DNS、443 安全组、防火墙和 Cloudflare 完全（严格）模式。"
+  fi
+}
+
 restart_cmd() {
   load_env
   compose up -d --remove-orphans
   compose up -d --no-deps --force-recreate app
+  if [ "${SUBBOOST_INSTALL_MODE:-local}" = server ]; then compose restart caddy; fi
   say "正在等待应用就绪..."
   if ! wait_for_health; then
     status_cmd
     die "重启后健康检查未通过，请运行 'subboost logs' 查看日志。"
   fi
+  check_public_https
   status_cmd
 }
 
@@ -1291,6 +1311,7 @@ doctor_cmd() {
     die "$(doctor_health_failure_message "$health_status")"
   fi
   status_cmd
+  check_public_https
   say "Doctor: OK"
 }
 
