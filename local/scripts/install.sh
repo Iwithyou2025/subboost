@@ -20,6 +20,7 @@ ENV_FILE="$SUBBOOST_HOME/.env"
 COMPOSE_FILE="$SUBBOOST_HOME/docker-compose.yml"
 TMP_DIR="${TMPDIR:-/tmp}/subboost-install.$$"
 RELEASE_FILE="$TMP_DIR/release.json"
+RESUME_HTTPS=0
 RESTORE_ARCHIVE=""
 RESTORE_DUMP=""
 RESTORE_ENV=""
@@ -48,6 +49,7 @@ Usage:
 
 Options:
   --restore FILE  Install a fresh SubBoost instance from a full ZIP backup.
+  --resume-https  Configure/retry HTTPS on an installed server; never restores data.
   -h, --help      Show this help message.
 EOF
 }
@@ -61,6 +63,7 @@ parse_args() {
         RESTORE_ARCHIVE="$2"
         shift 2
         ;;
+      --resume-https) RESUME_HTTPS=1; shift ;;
       -h|--help)
         usage
         exit 0
@@ -105,7 +108,7 @@ prepare_private_directory() {
 install_secret_file() {
   local source="$1"
   local destination="$2"
-  run_root install -m 600 "$source" "$destination"
+  run_root install -m 600 "$source" "$destination" || return 1
   if ! is_root; then
     run_root chown "$(id -u):$(id -g)" "$destination"
   fi
@@ -914,6 +917,30 @@ valid_https_domain() {
   done
 }
 
+https_dns_preflight() {
+  # Published Cloudflare ranges (https://www.cloudflare.com/ips/), checked
+  # locally so detection does not depend on a second network service.
+  timeout 20 python3 - "$HTTPS_DOMAIN" "$TLS_MODE" <<'PYDNS'
+import ipaddress, socket, sys
+try:
+    addresses = sorted({x[4][0] for x in socket.getaddrinfo(sys.argv[1], 443, type=socket.SOCK_STREAM)})
+except OSError as exc:
+    print("DNS 查询失败: " + str(exc), file=sys.stderr)
+    raise SystemExit(1)
+if not addresses: raise SystemExit(1)
+print("域名当前解析: " + ", ".join(addresses))
+ranges = "173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32"
+networks = [ipaddress.ip_network(x) for x in ranges.split()]
+if sys.argv[2] == "auto":
+    if any(ipaddress.ip_address(a) in n for a in addresses for n in networks):
+        print("自动证书无法通过 Cloudflare 橙云签发。请关闭代理并等待 DNS 生效，或改选导入证书。", file=sys.stderr)
+        raise SystemExit(1)
+    if any(not ipaddress.ip_address(a).is_global for a in addresses):
+        print("自动证书需要公网 A/AAAA 地址。", file=sys.stderr)
+        raise SystemExit(1)
+PYDNS
+}
+
 select_install_mode() {
   local answer
   while true; do
@@ -940,13 +967,15 @@ select_install_mode() {
       *) [ -z "$TLS_MODE" ] || die "SUBBOOST_TLS_MODE 必须为 auto 或 import。"; warn "请输入 1 或 2。" ;;
     esac
   done
-  # Bound DNS timeout: bad resolvers must not hang installation indefinitely.
-  timeout 20 python3 - "$HTTPS_DOMAIN" <<'PYDNS' || die "域名 DNS 查询失败。请先设置 A/AAAA 记录，检查服务器 DNS 后重试。"
-import socket, sys
-addresses = sorted({x[4][0] for x in socket.getaddrinfo(sys.argv[1], 443, type=socket.SOCK_STREAM)})
-if not addresses: raise SystemExit(1)
-print("域名当前解析: " + ", ".join(addresses))
-PYDNS
+  while ! https_dns_preflight; do
+    [ "$SUBBOOST_ASSUME_YES" != 1 ] || die "DNS 前置检查失败；尚未创建服务。修复 DNS 或选择导入证书后重试。"
+    answer="$(prompt 'DNS 未满足条件：1 重新检查，2 更换证书方式，其他退出 [q]: ' q)"
+    case "$answer" in
+      1) ;;
+      2) TLS_MODE=""; select_install_mode; return ;;
+      *) die "安装已停止；未恢复数据库。已有安装的数据保持不变。" ;;
+    esac
+  done
   say "请确认云安全组允许 TCP 443；脚本不会清空防火墙或停止其他项目。"
   if [ "$TLS_MODE" = auto ]; then
     say "自动申请和续期均需域名直连本机 443；请保持橙云关闭，并清理错误的 AAAA 记录。"
@@ -1029,7 +1058,7 @@ collect_https_certificate() {
 
 prepare_https_config() {
   [ "$INSTALL_MODE" = server ] || return 0
-  port_is_free 443 || die "TCP 443 已被占用。请自行调整冲突服务；未停止任何现有项目。"
+  if [ "${RESUME_HTTPS:-0}" != 1 ]; then port_is_free 443 || die "TCP 443 已被占用。请自行调整冲突服务；未停止任何现有项目。"; fi
   local version
   version="$(docker_cmd compose version --short)"; version="${version#v}"
   python3 - "$version" <<'PYVERSION' || die "服务器模式需要 Docker Compose 2.24.4 或更新版本（支持 !override）。"
@@ -1039,10 +1068,10 @@ if not m or tuple(map(int, m.groups())) < (2,24,4): raise SystemExit(1)
 PYVERSION
   [ "$TLS_MODE" != import ] || collect_https_certificate
   HTTPS_FILES_CREATED=1
-  prepare_private_directory "$SUBBOOST_HOME/https"
+  prepare_private_directory "$SUBBOOST_HOME/https" || return 1
   if [ "$TLS_MODE" = import ]; then
-    install_secret_file "$TMP_DIR/origin.pem" "$SUBBOOST_HOME/https/origin.pem"
-    install_secret_file "$TMP_DIR/origin.key" "$SUBBOOST_HOME/https/origin.key"
+    install_secret_file "$TMP_DIR/origin.pem" "$SUBBOOST_HOME/https/origin.pem" || return 1
+    install_secret_file "$TMP_DIR/origin.key" "$SUBBOOST_HOME/https/origin.key" || return 1
   fi
   local caddyfile="$TMP_DIR/Caddyfile"
   {
@@ -1054,7 +1083,7 @@ PYVERSION
     fi
     printf '    header Referrer-Policy "no-referrer"\n    reverse_proxy app:3000 {\n        header_down -Referrer-Policy\n    }\n}\n'
   } > "$caddyfile"
-  install_secret_file "$caddyfile" "$SUBBOOST_HOME/https/Caddyfile"
+  install_secret_file "$caddyfile" "$SUBBOOST_HOME/https/Caddyfile" || return 1
   cat > "$TMP_DIR/https.yml" <<'YAML'
 # Locally owned: always load AFTER the release-owned Compose file.
 services:
@@ -1080,12 +1109,12 @@ volumes:
   subboost-caddy-data:
   subboost-caddy-config:
 YAML
-  install_secret_file "$TMP_DIR/https.yml" "$SUBBOOST_HOME/https-compose.yml"
-  set_env_value SUBBOOST_INSTALL_MODE server
-  set_env_value SUBBOOST_TLS_MODE "$TLS_MODE"
-  set_env_value APP_URL "https://$HTTPS_DOMAIN"
-  set_env_value SUBBOOST_PORT "$(random_free_port)"
-  set_env_value TRUST_PROXY_HEADERS false
+  install_secret_file "$TMP_DIR/https.yml" "$SUBBOOST_HOME/https-compose.yml" || return 1
+  set_env_value SUBBOOST_INSTALL_MODE server || return 1
+  set_env_value SUBBOOST_TLS_MODE "$TLS_MODE" || return 1
+  set_env_value APP_URL "https://$HTTPS_DOMAIN" || return 1
+  if [ "${RESUME_HTTPS:-0}" != 1 ]; then set_env_value SUBBOOST_PORT "$(random_free_port)"; fi
+  set_env_value TRUST_PROXY_HEADERS false || return 1
   # Compose prioritizes exported variables over --env-file. Do not let an
   # inherited old APP_URL or port override the server configuration just saved.
   unset APP_URL SUBBOOST_PORT TRUST_PROXY_HEADERS
@@ -1108,22 +1137,53 @@ https_start_and_check() {
   done
   code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 "https://$HTTPS_DOMAIN/api/health/ready" 2>/dev/null)" || code=000
   case "$code" in
-    200) say "公网 HTTPS 验证通过。" ;;
-    522) warn "本机正常，但 Cloudflare 522：检查 DNS 指向、云安全组 TCP 443、Docker FORWARD/DOCKER-USER 防火墙和完全（严格）模式。"; return 1 ;;
+    200) run_root rm -f "$SUBBOOST_HOME/.https-pending"; say "公网 HTTPS 验证通过。" ;;
+    522|523) warn "本机正常，但 Cloudflare 522/523：检查 DNS 指向、云安全组 TCP 443、Docker FORWARD/DOCKER-USER 防火墙和完全（严格）模式。"; return 1 ;;
     525|526) warn "Cloudflare TLS 校验失败：检查源站证书和完全（严格）模式。"; return 1 ;;
     *) warn "本机正常，但公网 HTTPS 检查失败（HTTP $code）：检查 A/AAAA、云防火墙、代理模式及证书信任。"; return 1 ;;
   esac
+}
+
+resume_https() {
+  [ -z "$RESTORE_ARCHIVE" ] || die "--resume-https 不可与 --restore 同用；此操作不会重复恢复数据。"
+  [ -f "$ENV_FILE" ] && [ -f "$COMPOSE_FILE" ] || die "未找到完整安装记录，不能继续 HTTPS。"
+  [ "$(file_env_value "$ENV_FILE" SUBBOOST_INSTALL_MODE)" = server ] || die "此入口仅用于新版服务器模式；旧独立 Caddy 请先迁移配置。"
+  [ -f "$SUBBOOST_HOME/https-compose.yml" ] || die "服务器 HTTPS Compose 缺失，请先恢复该文件。"
+  mkdir -p "$TMP_DIR"
+  INSTALL_MODE=server
+  HTTPS_DOMAIN="$(file_env_value "$ENV_FILE" APP_URL)"; HTTPS_DOMAIN="${HTTPS_DOMAIN#https://}"
+  # Empty TLS_MODE intentionally offers both modes again, including switching
+  # from failed ACME to an imported Origin certificate.
+  select_install_mode
+  local saved="$TMP_DIR/https-previous"
+  mkdir -p "$saved"
+  cp -a "$ENV_FILE" "$saved/env"
+  cp -a "$SUBBOOST_HOME/https-compose.yml" "$saved/compose"
+  cp -a "$SUBBOOST_HOME/https" "$saved/https"
+  if ! (prepare_https_config && compose run --rm --no-deps caddy caddy validate --config /etc/subboost-tls/Caddyfile --adapter caddyfile); then
+    cp -a "$saved/env" "$ENV_FILE"
+    cp -a "$saved/compose" "$SUBBOOST_HOME/https-compose.yml"
+    cp -a "$saved/https/." "$SUBBOOST_HOME/https/"
+    die "新配置验证失败，已恢复旧配置；数据库未改动。可重新运行 --resume-https。"
+  fi
+  unset APP_URL SUBBOOST_PORT TRUST_PROXY_HEADERS
+  run_root touch "$SUBBOOST_HOME/.https-pending"
+  compose up -d caddy
+  compose restart caddy
+  https_start_and_check || die "数据保留。修复 DNS/443 后运行 sudo subboost restart；更换证书方式可重新运行安装脚本 --resume-https。"
+  say "HTTPS 配置完成；未恢复或替换数据库。"
 }
 
 main() {
   umask 077
   require_linux
   parse_args "$@"
+  if [ "$RESUME_HTTPS" = 1 ]; then resume_https; return; fi
   local live_env="$ENV_FILE"
   local live_compose="$COMPOSE_FILE"
   if [ -e "$live_env" ] || [ -e "$live_compose" ]; then
     if [ -n "$RESTORE_ARCHIVE" ]; then
-      die "--restore is for a fresh target only. Existing installation metadata was found."
+      die "--restore 仅用于全新安装，已有安装记录。恢复数据用 sudo subboost restore <backup.zip>；继续/更换 HTTPS 配置请将本安装命令的 --restore 文件参数替换为 --resume-https；网络修复后可运行 sudo subboost restart。"
     fi
     die "Existing installation metadata was found. Use 'subboost update' or inspect the incomplete installation before retrying."
   fi
@@ -1315,8 +1375,9 @@ main() {
     fi
   fi
 
+  if [ "$INSTALL_MODE" = server ]; then run_root touch "$SUBBOOST_HOME/.https-pending"; fi
   if ! https_start_and_check; then
-    warn "应用及数据已保留，但 HTTPS 尚未通过验证，不能视为安装成功。修复网络后运行 sudo subboost restart 和 sudo subboost doctor。"
+    warn "应用及数据已保留，但 HTTPS 尚未通过验证，不能视为安装成功。修复网络后运行 sudo subboost restart；更换证书方式请重新运行安装脚本 --resume-https。不要再次 --restore。"
     exit 1
   fi
 

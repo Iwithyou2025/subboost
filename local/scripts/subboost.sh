@@ -636,8 +636,16 @@ status_cmd() {
   say "应用: $(service_status_text app)"
   say "数据库: $(service_status_text db)"
   say "定时任务: $(service_status_text cron)"
+  if [ "${SUBBOOST_INSTALL_MODE:-local}" = server ]; then
+    say "Caddy: $(service_status_text caddy)"
+    say "证书方式: ${SUBBOOST_TLS_MODE:-未知}"
+    say "证书有效性及公网 HTTPS: 本次状态展示未检测，请运行 subboost doctor。"
+  elif [[ "${APP_URL:-}" = https://* ]]; then
+    say "HTTPS: 外部代理，不由当前 Compose 管理；应用健康不代表 HTTPS 正常。"
+  fi
   say ""
   say "健康检查: $(health_status_text)"
+  if [ -f "$SUBBOOST_HOME/.https-pending" ]; then say "HTTPS 配置待完成：修复网络后 subboost restart；更换证书用安装脚本 --resume-https。"; fi
   say "备份目录: $BACKUP_DIR"
   say ""
   say "常用命令: subboost logs / subboost backup / subboost restore / subboost update / subboost restart / subboost doctor"
@@ -895,6 +903,7 @@ restore_cmd() {
   safety_env="$BACKUP_DIR/restore-safety-$safety_stamp.env"
 
   compose up -d db
+  wait_for_database_with_files "$ENV_FILE" "$COMPOSE_FILE" || die "数据库未就绪，未开始恢复或停止应用。请运行 subboost logs db 后重试。"
   verify_dump_file "$RESTORE_DUMP" || die "Backup database dump is invalid."
   build_restore_env "$RESTORE_ENV" "$candidate_env"
   read_env_file > "$old_env"
@@ -973,6 +982,7 @@ restore_cmd() {
   say "Restore completed successfully."
   say "Safety backup retained: $safety_dump"
   status_cmd
+  check_public_https
 }
 
 manager_data_host_dir() {
@@ -1203,6 +1213,26 @@ delete_docker_residuals() {
   [ -z "$residuals" ] || die "SubBoost Docker resources remain:$residuals"
 }
 
+delete_network_preflight() {
+  local project="$1" network container owner name blocked=0
+  local networks members
+  networks="$(docker_cmd network ls -q --filter "label=com.docker.compose.project=$project")" || die "无法检查网络占用，取消卸载；数据未删除。"
+  for network in $networks; do
+    members="$(docker_cmd network inspect -f '{{range $id, $v := .Containers}}{{println $id}}{{end}}' "$network")" || die "无法检查网络成员，取消卸载；数据未删除。"
+    for container in $members; do
+      owner="$(docker_cmd inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$container")" || die "无法确认网络成员归属，取消卸载。"
+      [ "$owner" != "$project" ] || continue
+      name="$(docker_cmd inspect -f '{{.Name}}' "$container")"
+      say "卸载前发现外部容器占用网络: $name（项目 $owner）"
+      blocked=1
+      if [ "$owner" = subboost-https ]; then
+        say "旧独立 Caddy 请先执行 sudo docker compose -f /opt/subboost-https/compose.yml down，再重新卸载。证书文件会保留。"
+      fi
+    done
+  done
+  [ "$blocked" = 0 ] || die "已在删除数据库前停止。请先处理上列外部容器，不会自动删除其他项目。"
+}
+
 delete_cmd() {
   local confirmation="" project_name manager_bin unit_file image key rollback_image
   local seen_images=" "
@@ -1240,6 +1270,8 @@ delete_cmd() {
   project_name="$(delete_compose_project_name)"
   [ -n "$project_name" ] || die "Unable to determine the SubBoost Docker Compose project name."
 
+  delete_network_preflight "$project_name"
+
   if command -v systemctl >/dev/null 2>&1; then
     sudo_do systemctl disable --now "$AGENT_SERVICE_NAME" >/dev/null 2>&1 || true
   fi
@@ -1273,10 +1305,33 @@ delete_cmd() {
 }
 
 check_public_https() {
-  [ "${SUBBOOST_INSTALL_MODE:-local}" = server ] || return 0
+  [[ "${APP_URL:-}" = https://* ]] || return 0
+  if [ "${SUBBOOST_INSTALL_MODE:-local}" = server ]; then
+    say "Caddy: $(service_status_text caddy)"
+    local domain="${APP_URL#https://}" attempt ready=0
+    domain="${domain%%/*}"
+    local -a verification=()
+    if [ "${SUBBOOST_TLS_MODE:-}" = import ]; then
+      verification=(-k)
+      if ! openssl x509 -in "$SUBBOOST_HOME/https/origin.pem" -noout -checkend 0 >/dev/null 2>&1 ||
+         ! openssl x509 -in "$SUBBOOST_HOME/https/origin.pem" -noout -checkhost "$domain" >/dev/null 2>&1; then
+        die "导入证书已过期、域名不匹配或无法读取。使用安装脚本 --resume-https 更换证书；数据不受影响。"
+      fi
+    fi
+    for attempt in $(seq 1 15); do
+      if curl --noproxy '*' "${verification[@]}" --resolve "$domain:443:127.0.0.1" -fsS --connect-timeout 2 --max-time 3 "$APP_URL/api/health/ready" >/dev/null 2>&1; then ready=1; break; fi
+      sleep 2
+    done
+    [ "$ready" = 1 ] || die "本机 HTTPS 未就绪。运行 subboost logs 查看 Caddy；修复 DNS/443 后 subboost restart，或安装脚本 --resume-https 更换证书方式。"
+    say "本机 HTTPS：正常（导入证书模式的源站信任由代理校验）。"
+  else
+    say "正在检查外部 HTTPS 入口（独立 Caddy 不会随数据恢复自动创建）。"
+  fi
   if ! curl --noproxy '*' -fsS --connect-timeout 10 --max-time 25 "$APP_URL/api/health/ready" >/dev/null; then
     die "本机应用可用，但公网 HTTPS 检查失败。检查 Caddy、DNS、443 安全组、防火墙和 Cloudflare 完全（严格）模式。"
   fi
+  sudo_do rm -f "$SUBBOOST_HOME/.https-pending"
+  say "公网 HTTPS：正常，证书信任验证通过。"
 }
 
 restart_cmd() {
@@ -1350,10 +1405,29 @@ menu_cmd() {
   esac
 }
 
+help_cmd() {
+  cat <<'EOF'
+SubBoost 管理命令：
+  subboost status              查看服务状态（不代表公网 HTTPS 已通过验证）
+  subboost doctor              检查应用及公网 HTTPS
+  subboost restart             重启服务并检查公网 HTTPS
+  subboost restore <backup.zip> 恢复现有安装数据，保留当前部署方式
+  subboost backup              备份数据
+  subboost logs                查看日志
+  subboost update              更新现有安装
+  subboost delete              完整卸载（永久删除数据库及安装目录中的备份）
+  subboost help / --help / -h   查看帮助
+全新安装并恢复：install.sh --restore <backup.zip>，随后选择本地/服务器模式。
+已有新版服务器安装继续或更换 HTTPS：install.sh --resume-https（不恢复数据）。
+旧独立 /opt/subboost-https 不由新版 Compose 自动接管。
+EOF
+}
+
 main() {
   local command="${1:-menu}"
   if [ "$#" -gt 0 ]; then shift; fi
   case "$command" in
+    help|--help|-h) help_cmd ;;
     menu) menu_cmd ;;
     status) status_cmd ;;
     update) update_cmd ;;
@@ -1365,7 +1439,7 @@ main() {
     agent) agent_cmd ;;
     agent-install) agent_install_cmd ;;
     delete) delete_cmd ;;
-    *) die "Unknown command: $command" ;;
+    *) die "Unknown command: $command. Run subboost --help." ;;
   esac
 }
 

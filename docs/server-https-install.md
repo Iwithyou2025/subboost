@@ -58,3 +58,39 @@ sudo env SUBBOOST_INSTALL_MODE=server SUBBOOST_DOMAIN=sub.example.com \
 CI 保留原 lint/coverage/应用完整构建；新增 Docker/Caddy 实际 HTTPS 联通、loopback 端口合并、上游重建后的恢复及自动证书配置校验；新增生产 Dockerfile 构建（不推送镜像）。集成测试使用临时自签证书并指定信任，**不验证真实 ACME 签发、Cloudflare 或云安全组**。
 
 本次开发基于用户提供的 subboost-main(8).zip。远程工作流是否运行成功应以 GitHub Actions 的实际结果为准。
+
+
+## 安装中断后继续（无需重新恢复数据库）
+
+应用和数据已经恢复、仅 HTTPS 失败时，不要再次 `--restore`，也不要卸载。
+修复 DNS/443 网络后执行 `sudo subboost restart`；需要重新选择证书方式时：
+
+```bash
+curl -fsSL https://github.com/Iwithyou2025/subboost/releases/latest/download/install.sh | sudo bash -s -- --resume-https
+```
+
+此入口要求已有新版服务器模式安装记录，只修改 HTTPS 配置，保留数据库、
+加密密钥及应用端口。可以从自动证书切换为导入证书；新配置验证失败会恢复旧配置。
+执行该命令需要包含此修复的正式版安装脚本。
+
+自动证书模式会在创建服务前检查 DNS。Cloudflare 官方代理地址段或非公网地址
+将被拦截；可重新检查或更换证书方式。该检查不能证明公网入站 TCP 443 可达，
+也无法识别所有第三方 CDN；仍需将全部 A/AAAA 指向本机并开放云安全组。
+Cloudflare 地址段来自官方 ips-v4/ips-v6 列表，内置快照需随官方变更更新。
+
+`subboost --help` 查看帮助；`subboost doctor` 会检查本机 HTTPS 和公网入口。
+独立外部代理的安装也会检查公网 HTTPS；仅显示应用健康不会代表代理已启动。
+公网验证通过只代表公网端证书可信，导入 Cloudflare Origin CA 时仍必须使用
+Cloudflare 的完全（严格）模式确保回源证书校验。
+
+## 卸载旧手动 HTTPS 部署
+
+卸载会在删除数据库前检查项目网络的外部容器。若旧独立 Caddy 占用网络，
+先执行以下命令移除旧代理容器（保留证书文件），然后重试 `sudo subboost delete`：
+
+```bash
+sudo docker compose -f /opt/subboost-https/compose.yml down
+```
+
+不自动删除未知项目，也不自动删除旧目录的证书。新版服务器模式的 Caddy
+属于同一个 Compose 项目，会随 SubBoost 完整卸载。删除前请把备份保存到安装目录外。

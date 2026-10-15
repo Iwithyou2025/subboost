@@ -194,3 +194,131 @@ PYTTY
   });
 
 });
+
+describe("HTTPS recovery regressions", () => {
+  it("rejects Cloudflare IPv4 and IPv6 before auto TLS, but allows imported certificates", () => {
+    const r = run(String.raw`
+mkdir -p "$work/python"
+cat > "$work/python/socket.py" <<'PY'
+SOCK_STREAM=1
+def getaddrinfo(*args, **kwargs):
+    return [(0,0,0,0,('104.21.23.170',443)),(0,0,0,0,('2606:4700:3034::6815:17aa',443))]
+PY
+export PYTHONPATH="$work/python"
+HTTPS_DOMAIN=example.com
+TLS_MODE=auto
+if https_dns_preflight; then exit 10; fi
+TLS_MODE=import
+https_dns_preflight
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain("Cloudflare 橙云");
+  });
+
+  it("does not create services when noninteractive DNS preflight fails", () => {
+    const r = run(String.raw`
+INSTALL_MODE=server HTTPS_DOMAIN=example.com TLS_MODE=auto
+https_dependencies() { :; }
+https_dns_preflight() { return 1; }
+select_install_mode
+printf 'SHOULD_NOT_CONTINUE'
+`);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("尚未创建服务");
+    expect(r.stdout).not.toContain("SHOULD_NOT_CONTINUE");
+  });
+
+  it("supports help without an installed environment or Docker", () => {
+    const r = run("main --help\nmain help\nmain -h", true);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("--resume-https");
+  });
+
+  it("stops restore before validating or dumping when the database is not ready", () => {
+    const r = run(String.raw`
+load_env() { :; }
+resolve_restore_inputs() { RESTORE_ENV=unused; RESTORE_DUMP=unused; }
+compose() { echo "compose:$*"; }
+wait_for_database_with_files() { return 1; }
+verify_dump_file() { echo UNSAFE; }
+create_verified_dump() { echo UNSAFE; }
+restore_cmd unused.zip
+`, true);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("数据库未就绪");
+    expect(r.stdout).not.toContain("UNSAFE");
+    expect(r.stdout).not.toContain("stop cron");
+  });
+
+  it("blocks external Caddy network occupancy without deleting anything", () => {
+    const r = run(String.raw`
+docker_cmd() {
+  case "$*" in
+    'network ls '*) echo net ;;
+    'network inspect '*) echo foreign ;;
+    *com.docker.compose.project*) echo subboost-https ;;
+    *'.Name'*) echo /subboost-https-caddy-1 ;;
+    *) echo UNEXPECTED; return 1 ;;
+  esac
+}
+delete_network_preflight subboost
+`, true);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("删除数据库前停止");
+    expect(r.stdout).toContain("/opt/subboost-https/compose.yml down");
+    expect(r.stdout).not.toContain("UNEXPECTED");
+  });
+
+  it("allows project-owned Caddy during delete preflight", () => {
+    const r = run(String.raw`
+docker_cmd() {
+  case "$*" in
+    'network ls '*) echo net ;;
+    'network inspect '*) echo own ;;
+    *com.docker.compose.project*) echo subboost ;;
+    *) return 1 ;;
+  esac
+}
+delete_network_preflight subboost
+`, true);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it("resumes HTTPS without restoring data or changing the existing app port", () => {
+    const r = run(String.raw`
+RESUME_HTTPS=1
+printf 'SUBBOOST_INSTALL_MODE=server\nAPP_URL=https://example.com\nSUBBOOST_PORT=38872\nENCRYPTION_KEY=original\n' > "$ENV_FILE"
+touch "$COMPOSE_FILE" "$SUBBOOST_HOME/https-compose.yml"
+mkdir -p "$SUBBOOST_HOME/https"
+echo original > "$SUBBOOST_HOME/https/Caddyfile"
+select_install_mode() { TLS_MODE=auto; }
+prepare_https_config() { echo updated > "$SUBBOOST_HOME/https/Caddyfile"; }
+compose() { case "$*" in *db*|*app*|*pg_restore*) exit 99 ;; esac; echo "compose:$*"; }
+https_start_and_check() { :; }
+resume_https
+grep -q '^SUBBOOST_PORT=38872$' "$ENV_FILE"
+grep -q '^ENCRYPTION_KEY=original$' "$ENV_FILE"
+grep -q updated "$SUBBOOST_HOME/https/Caddyfile"
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("未恢复或替换数据库");
+  });
+
+  it("restores prior HTTPS settings if a replacement configuration fails validation", () => {
+    const r = run(String.raw`
+RESUME_HTTPS=1
+printf 'SUBBOOST_INSTALL_MODE=server\nAPP_URL=https://example.com\n' > "$ENV_FILE"
+touch "$COMPOSE_FILE" "$SUBBOOST_HOME/https-compose.yml"
+mkdir -p "$SUBBOOST_HOME/https"
+echo original > "$SUBBOOST_HOME/https/Caddyfile"
+select_install_mode() { TLS_MODE=import; }
+prepare_https_config() { echo broken > "$SUBBOOST_HOME/https/Caddyfile"; echo changed > "$ENV_FILE"; }
+compose() { return 1; }
+if (resume_https); then exit 99; fi
+grep -q original "$SUBBOOST_HOME/https/Caddyfile"
+grep -q SUBBOOST_INSTALL_MODE=server "$ENV_FILE"
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain("已恢复旧配置");
+  });
+});
