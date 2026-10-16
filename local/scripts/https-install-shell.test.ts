@@ -394,7 +394,8 @@ if run_step '失败阶段' fail; then exit 10; else [ "$?" = 17 ]; fi
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).not.toContain("INTERNAL_SUCCESS_LOG");
     expect(r.stderr).toContain("CONNECTION_REFUSED");
-    expect(r.stdout).toContain("启动服务：完成");
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toContain("失败阶段失败（退出码 17）");
   });
 
   it("replaces restored URL and port without changing encryption keys or using stale exported values", () => {
