@@ -156,7 +156,7 @@ if https_start_and_check; then exit 1; fi
     expect(r.status, r.stderr).toBe(0);
     expect(r.stderr).toContain("Cloudflare 522");
   });
-  it("accepts multiline PEM from a real TTY without echoing secret input", () => {
+  it("accepts multiline PEM from a real TTY with echo and a blank-line terminator", () => {
     const r = run(`
 python3 - "$PWD/local/scripts/install.sh" "$work/pasted" <<'PYTTY'
 import fcntl, os, pty, select, subprocess, sys, termios, time
@@ -173,19 +173,16 @@ deadline=time.monotonic()+10
 try:
     while b'private-key' not in output and time.monotonic()<deadline:
         if select.select([master],[],[],0.1)[0]: output+=os.read(master,4096)
-    # read -s has disabled echo before submitting clipboard input.
-    while termios.tcgetattr(master)[3] & termios.ECHO:
-        if time.monotonic()>deadline: raise RuntimeError('terminal did not hide input')
-        time.sleep(0.01)
+    assert termios.tcgetattr(master)[3] & termios.ECHO
     payload=b'-----BEGIN PRIVATE KEY-----\\nsecret-test-payload\\n-----END PRIVATE KEY-----\\n'
-    os.write(master,payload+b'DONE\\n')
+    os.write(master,payload+b'\\n')
     p.wait(timeout=5)
     while select.select([master],[],[],0.1)[0]:
         try: output+=os.read(master,4096)
         except OSError: break
     assert p.returncode==0, output
     assert open(sys.argv[2],'rb').read()==payload
-    assert b'secret-test-payload' not in output, output
+    assert b'secret-test-payload' in output, output
 finally:
     if p.poll() is None: p.kill()
     os.close(master)
