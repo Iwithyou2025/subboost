@@ -32,7 +32,7 @@ say() {
   printf '%s\n' "$*"
 }
 
-# Successful steps remain silent; interactive prompts and the final summary stay visible.
+# Quiet internal checks only. Docker pull/up/restart run directly for live progress.
 # A failed command retains its exit status and emits a bounded diagnostic tail.
 run_step() {
   local label="$1" result logfile
@@ -1272,7 +1272,7 @@ YAML
 https_start_and_check() {
   [ "$INSTALL_MODE" = server ] || return 0
   run_step "检查 HTTPS 配置" compose run --rm --no-deps caddy caddy validate --config /etc/subboost-tls/Caddyfile --adapter caddyfile || return 1
-  run_step "启动 HTTPS 服务" compose up -d caddy || return 1
+  compose up -d caddy || return 1
   local i code=""
   for i in $(seq 1 30); do
     # Imported Origin CA certs are not publicly trusted. -k is LOCAL ONLY.
@@ -1335,8 +1335,8 @@ resume_https() {
   fi
   unset APP_URL SUBBOOST_PORT TRUST_PROXY_HEADERS
   run_root touch "$SUBBOOST_HOME/.https-pending"
-  run_step "启动 HTTPS 服务" compose up -d caddy
-  run_step "加载 HTTPS 配置" compose restart caddy
+  compose up -d caddy
+  compose restart caddy
   https_start_and_check || die "数据保留。修复 DNS/443 后运行 sudo subboost restart；更换证书方式可重新运行安装脚本 --resume-https。"
   say "HTTPS 配置完成；未恢复或替换数据库。"
 }
@@ -1498,9 +1498,9 @@ main() {
     printf '%s\n' "$services" | grep -Fxq "$service" || die "Candidate Compose is missing service: $service"
   done
   docker_cmd volume ls -q > "$volumes_before"
-  run_step "下载部署镜像" retry_network compose pull || die "镜像下载失败；尚未创建应用容器，可修复网络后重试。"
+  retry_network compose pull || die "镜像下载失败；尚未创建应用容器，可修复网络后重试。"
   if [ -n "$RESTORE_ARCHIVE" ]; then
-    if ! run_step "启动数据库" compose up -d db || ! run_step "等待数据库就绪" wait_for_database; then
+    if ! compose up -d db || ! wait_for_database; then
       cleanup_failed_install "$volumes_before"
       die "Migration installation failed while starting PostgreSQL; resources created by this run were cleaned up."
     fi
@@ -1512,12 +1512,12 @@ main() {
       cleanup_failed_install "$volumes_before"
       die "Migration installation failed while restoring data or resetting the administrator password."
     fi
-    if ! run_step "启动应用" compose up -d app || ! run_step "检查应用健康" wait_for_health "$(env_value SUBBOOST_PORT)" || ! run_step "启动定时任务" compose up -d cron; then
+    if ! compose up -d app || ! wait_for_health "$(env_value SUBBOOST_PORT)" || ! compose up -d cron; then
       cleanup_failed_install "$volumes_before"
       die "Migration installation failed; resources created by this run were cleaned up."
     fi
   else
-    if ! run_step "启动数据库和应用" compose up -d db app || ! run_step "检查应用健康" wait_for_health "$(env_value SUBBOOST_PORT)" || ! run_step "启动定时任务" compose up -d cron; then
+    if ! compose up -d db app || ! wait_for_health "$(env_value SUBBOOST_PORT)" || ! compose up -d cron; then
       cleanup_failed_install "$volumes_before"
       die "New installation failed; only resources created by this run were cleaned up."
     fi

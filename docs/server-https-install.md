@@ -98,9 +98,9 @@ sudo docker compose -f /opt/subboost-https/compose.yml down
 
 ## 输出与 DNS 传播检查
 
-正常安装的成功步骤保持静默，保留交互提示和最终安装结果。
-Docker 层进度、SQL NOTICE 和 Caddy 配置校验 JSON 不直接显示；失败时显示
-阶段名称、退出码及最多 25 行诊断。管理员登录信息及最终访问地址继续显示。
+镜像拉取、容器创建、启动和重启直接显示 Docker 原生实时进度，等待健康检查时保留等待提示。
+不额外显示“步骤…”或“步骤：完成”。数据库恢复的 SQL NOTICE 和 Caddy 配置校验 JSON
+成功时隐藏，失败时显示阶段名称、退出码及最多 25 行诊断。交互提示及最终安装结果继续显示。
 
 DNS 方案参考 [lego 的传播预检查](https://github.com/go-acme/lego/blob/master/challenge/dns01/precheck.go)
 区分本机解析与外部传播状态的思路；本项目仍使用 TLS-ALPN，不引入 DNS-01。
