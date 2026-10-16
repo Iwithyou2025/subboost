@@ -32,7 +32,7 @@ say() {
   printf '%s\n' "$*"
 }
 
-# Normal installs show stages, not Docker progress or database/Caddy internals.
+# Successful steps remain silent; interactive prompts and the final summary stay visible.
 # A failed command retains its exit status and emits a bounded diagnostic tail.
 run_step() {
   local label="$1" result logfile
@@ -40,10 +40,8 @@ run_step() {
   mkdir -p "$TMP_DIR"
   logfile="$(mktemp "$TMP_DIR/step.XXXXXX")" || return 1
   chmod 600 "$logfile"
-  say "$label..."
   if "$@" >"$logfile" 2>&1; then
     rm -f "$logfile"
-    say "$label：完成"
     return 0
   else
     result=$?
