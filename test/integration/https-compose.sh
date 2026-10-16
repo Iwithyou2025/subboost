@@ -28,6 +28,7 @@ services:
     ports:
       - "${SUBBOOST_PORT}:3000"
 YAML
+collect_https_certificate
 prepare_https_config
 compose config --format json > "$work/effective.json"
 python3 - "$work/effective.json" <<'PY'
