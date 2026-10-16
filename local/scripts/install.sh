@@ -987,11 +987,11 @@ https_dns_preflight() {
   # Inspired by lego's distinction between recursive propagation and local
   # resolution. This is A/AAAA preflight for TLS-ALPN, NOT DNS-01 validation.
   # DoH avoids local DNS caches and UDP/53 filtering; TLS verification stays on.
-  timeout 18 python3 - "$HTTPS_DOMAIN" "$TLS_MODE" "$TMP_DIR/dns-result.json" <<'PYDNS'
+  timeout 18 python3 - "$HTTPS_DOMAIN" "$TLS_MODE" "$TMP_DIR/dns-result.json" "${1:-preflight}" <<'PYDNS'
 import concurrent.futures, ipaddress, json, socket, subprocess, sys
 from urllib.parse import urlencode
 
-domain, mode, output = sys.argv[1:]
+domain, mode, output, phase = sys.argv[1:]
 providers = [('Cloudflare', 'cloudflare-dns.com', '1.1.1.1', '/dns-query'),
              ('Google', 'dns.google', '8.8.8.8', '/resolve')]
 ranges = "173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32"
@@ -1038,6 +1038,19 @@ for provider in providers:
 if not complete:
     print('公共 DNS 查询失败。请检查出站 HTTPS 网络后重查；不会把网络故障当成橙云开启。', file=sys.stderr)
     raise SystemExit(1)
+if phase == 'diagnostic':
+    # Certificate issuance has already succeeded. Resolver agreement is NOT a
+    # success criterion here: select a fresh candidate and actually test TLS.
+    candidates = {a for row in complete for a in row if ipaddress.ip_address(a).is_global}
+    if mode == 'auto':
+        candidates = {a for a in candidates if not any(ipaddress.ip_address(a) in n for n in networks)}
+    if not candidates:
+        print('未获得可用于直连重试的公共地址；DNS 信息仅供诊断，不代表控制台代理状态。', file=sys.stderr)
+        raise SystemExit(1)
+    print('DNS 诊断：公共结果可能尚在传播，将对最新可用地址进行真实 HTTPS 重试。')
+    selected = sorted(candidates, key=lambda a: (ipaddress.ip_address(a).version, a))[0]
+    with open(output, 'w') as f: json.dump({'address': selected, 'stale': True}, f)
+    raise SystemExit(0)
 if any(not row for row in complete):
     print('公共 DNS 尚未返回有效地址，可能仍在传播，请稍后重查。', file=sys.stderr)
     raise SystemExit(1)
@@ -1266,15 +1279,25 @@ https_start_and_check() {
     [ "$((i % 5))" != 0 ] || say "正在等待 HTTPS 就绪（$i/30）..."
     sleep 2
   done
-  # Refresh after image downloads/ACME; do not retain a pre-install DNS snapshot.
-  https_dns_preflight || return 1
-  local -a dns_route=()
-  if [ "${DNS_LOCAL_STALE:-0}" = 1 ] && [ -n "${DNS_PUBLIC_ADDRESS:-}" ]; then
-    local public_ip="$DNS_PUBLIC_ADDRESS"
-    [[ "$public_ip" != *:* ]] || public_ip="[$public_ip]"
-    dns_route=(--resolve "$HTTPS_DOMAIN:443:$public_ip")
+  say "本机 HTTPS 验证通过。"
+  # Test the actual endpoint first. Public recursive DNS caches can disagree
+  # even after ACME validation succeeded; do not reuse the issuance gate here.
+  code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 "https://$HTTPS_DOMAIN/api/health/ready" 2>/dev/null)" || code=000
+  if [ "$code" != 200 ]; then
+    warn "默认解析的 HTTPS 请求未通过（HTTP $code），正在查询公共 DNS 辅助诊断。"
+    if https_dns_preflight diagnostic && [ -n "${DNS_PUBLIC_ADDRESS:-}" ]; then
+      local public_ip="$DNS_PUBLIC_ADDRESS" retry_code
+      [[ "$public_ip" != *:* ]] || public_ip="[$public_ip]"
+      retry_code="$(curl --resolve "$HTTPS_DOMAIN:443:$public_ip" --noproxy '*' -sS -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 "https://$HTTPS_DOMAIN/api/health/ready" 2>/dev/null)" || retry_code=000
+      if [ "$retry_code" = 200 ]; then
+        run_root rm -f "$SUBBOOST_HOME/.https-pending"
+        say "公共解析地址的 HTTPS 实测通过，证书有效。"
+        warn "默认解析路径尚未通过；网站已部署，请等待缓存更新或检查默认网络路径。无需重新安装，不保证所有客户端已可访问。"
+        return 0
+      fi
+      code="$retry_code"
+    fi
   fi
-  code="$(curl "${dns_route[@]}" --noproxy '*' -sS -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 "https://$HTTPS_DOMAIN/api/health/ready" 2>/dev/null)" || code=000
   case "$code" in
     200) run_root rm -f "$SUBBOOST_HOME/.https-pending"; say "公网 HTTPS 验证通过。" ;;
     522|523) warn "本机正常，但 Cloudflare 522/523：检查 DNS 指向、云安全组 TCP 443、Docker FORWARD/DOCKER-USER 防火墙和完全（严格）模式。"; return 1 ;;
