@@ -1004,10 +1004,13 @@ def query(provider, kind):
             '--connect-timeout', '3', '--max-time', '6', '-fsS', '-H', 'accept: application/dns-json', url],
             capture_output=True, text=True, timeout=8, check=True).stdout
         data = json.loads(raw)
-        if data.get('Status') not in (0, 3) or data.get('TC'):
+        if not isinstance(data, dict) or data.get('Status') not in (0, 3) or data.get('TC'):
             return None
         values, ttls = set(), []
-        for answer in data.get('Answer', []):
+        answers = data.get('Answer', [])
+        if not isinstance(answers, list): return None
+        for answer in answers:
+            if not isinstance(answer, dict): return None
             if answer.get('type') == (1 if kind == 'A' else 28):
                 addr = ipaddress.ip_address(answer['data'])
                 if addr.version != (4 if kind == 'A' else 6): return None
@@ -1028,6 +1031,7 @@ for provider in providers:
         print(name + ' 公共 DNS：查询不完整或超时（不是橙云状态判断）')
         continue
     addresses = set().union(*(row[0] for row in rows))
+    if any(row[2] == 3 for row in rows): addresses = set()
     ttl = min((row[1] for row in rows if row[0]), default=0)
     print(name + ' 公共 DNS：' + (', '.join(sorted(addresses)) or '无 A/AAAA 记录') + f'（TTL {ttl} 秒）')
     complete.append(addresses)

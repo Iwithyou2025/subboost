@@ -212,6 +212,7 @@ mode=os.environ.get('DNS_TEST_'+provider, 'direct')
 kind=28 if 'type=AAAA' in url else 1
 if mode=='timeout' or (mode=='ipv6fail' and kind==28): sys.exit(28)
 if mode=='malformed': print('not-json'); sys.exit(0)
+if mode=='badshape': print('[]'); sys.exit(0)
 address='104.21.23.170' if mode=='proxy' else ('170.9.22.172' if mode=='other' else '170.9.22.171')
 answers=[] if kind==28 else [{'type':1,'data':address,'TTL':60}]
 if kind==28 and mode in ('proxy','ipv6proxy'):
@@ -377,8 +378,8 @@ https_dns_preflight
     expect(r.stderr).not.toContain("橙云仍开启");
   });
 
-  it("rejects malformed replies", () => {
-    const r = run(dnsFixture + "export DNS_TEST_GOOGLE=malformed DNS_TEST_CF=malformed\nhttps_dns_preflight");
+  it.each(["malformed", "badshape"])("rejects malformed replies: %s", (mode) => {
+    const r = run(dnsFixture + `export DNS_TEST_GOOGLE=${mode} DNS_TEST_CF=${mode}\nhttps_dns_preflight`);
     expect(r.status).not.toBe(0);
   });
 
