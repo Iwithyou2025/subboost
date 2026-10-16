@@ -2,8 +2,8 @@
 
 安装脚本首次运行（包括 `--restore backup.zip`）提供：
 
-1. 本地安装：沿用原有地址、端口及 HTTP 行为，不创建 Caddy。
-2. 服务器安装：输入域名，选择自动证书或导入证书。内部端口自动选择，应用仅绑定 127.0.0.1，公网仅发布 Caddy 的 TCP 443。
+1. 本地环境安装：不创建 Caddy。备份恢复时重新询问本地端口，回车随机选择可用端口，并重新读取当前机器 IPv4；不沿用备份的 IP/端口。获取地址失败时明确提示并允许手动输入，未提供有效地址则在创建容器前退出。
+2. 公网环境安装：输入域名，选择自动证书或导入证书。内部端口自动选择，应用仅绑定 127.0.0.1，公网仅发布 Caddy 的 TCP 443。
 
 服务器模式要求 Compose >= 2.24.4。缺少 curl、OpenSSL、Python 3、timeout 时会尝试通过 apt/dnf/yum 安装。缺少 Docker/Compose 沿用现有安装流程；已安装但版本过旧的 Compose 会明确报错，不自动更换正在使用的 Docker 软件包。
 
@@ -34,7 +34,7 @@ sudo env SUBBOOST_INSTALL_MODE=server SUBBOOST_DOMAIN=sub.example.com \
 
 - 443 占用：在写 HTTPS 配置、启动应用之前停止；不终止其他服务。
 - 下载、镜像拉取：有限重试；HTTP 下载设连接和总超时；镜像下载仍受 Docker daemon 自身网络超时控制。
-- DNS：有 20 秒超时；展示 A/AAAA 结果，无法仅从本机证明外网可达。云安全组不能在没有云账户授权的情况下自动修改。
+- DNS：每轮最多 18 秒，公共 DoH 查询包含连接/请求超时；同时查询 A/AAAA，并区分网络失败与代理地址。云安全组仍需自行配置。
 - 本机 HTTPS 成功、公网 522：检查 DNS 指向、443 安全组、FORWARD/DOCKER-USER、Cloudflare 完全（严格）。不会为了通过检查清空防火墙。
 - 525/526：检查证书、主机名和 Cloudflare 模式。
 - TLS 初始化/公网检查失败：返回非零；保留应用和数据，HTTP 仍仅本机可用。修复后执行 `sudo subboost restart`、`sudo subboost doctor`；不要重新恢复数据库或重新生成 ENCRYPTION_KEY。
@@ -94,3 +94,24 @@ sudo docker compose -f /opt/subboost-https/compose.yml down
 
 不自动删除未知项目，也不自动删除旧目录的证书。新版服务器模式的 Caddy
 属于同一个 Compose 项目，会随 SubBoost 完整卸载。删除前请把备份保存到安装目录外。
+
+
+## 输出与 DNS 传播检查
+
+正常安装只显示镜像下载、数据库启动/恢复、应用启动、HTTPS 验证等阶段。
+Docker 层进度、SQL NOTICE 和 Caddy 配置校验 JSON 不直接显示；失败时显示
+阶段名称、退出码及最多 25 行诊断。管理员登录信息及最终访问地址继续显示。
+
+DNS 方案参考 [lego 的传播预检查](https://github.com/go-acme/lego/blob/master/challenge/dns01/precheck.go)
+区分本机解析与外部传播状态的思路；本项目仍使用 TLS-ALPN，不引入 DNS-01。
+通过 [Cloudflare DoH JSON](https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/dns-json/)
+与 [Google DoH JSON](https://developers.google.com/speed/public-dns/docs/doh/json) 查询 A 和 AAAA，
+无需安装 dig 或修改系统 DNS。HTTPS 查询保留 TLS 校验，绕过本机目标域名缓存和 UDP 53 限制。
+
+- 每次选择重新检查都会重新查询，并显示来源和 TTL；公共 DNS 自身也可能缓存，不能承诺瞬间生效。
+- 自动证书：公共结果仍为 Cloudflare 地址时说明“代理开启或缓存尚未到期”，不推断控制台开关状态。
+- 两个完整公共结果不同则等待传播；其中一个不可用时使用另一个完整的 A/AAAA 结果，并明确提示降级。
+- A 成功而 AAAA 超时不算完整结果；两个来源均不可用、无记录或格式异常会停止并允许重试。
+- 公共 DNS 已更新而系统解析仍旧时允许继续；安装末尾重新查询公共 DNS，并用该地址连接验证 HTTPS，保留主机名和证书校验。不会改写系统 DNS、hosts 或强制清理缓存。
+- 仅抽查公共解析与一个入口地址，不能保证所有客户端缓存、所有地域或所有 A/AAAA 节点均已生效；最终仍以 ACME 签发及真实 HTTPS 检查为准。
+- 本地恢复自动读取默认路由的源 IPv4，其次尝试主机地址；它可能是内网地址，远程访问仍取决于网络路由。
