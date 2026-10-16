@@ -1133,20 +1133,24 @@ select_install_mode() {
   say "公网环境需要云安全组及防火墙允许 TCP 443；安装结束会验证 HTTPS 连通性。"
 }
 
-# Read /dev/tty, never pipeline stdin (curl | bash). Silent input keeps private
-# key material out of terminal recordings; DONE is an explicit multiline end.
+# Read echoed PEM input from /dev/tty, never pipeline stdin (curl | bash).
+# A blank line after a complete PEM block submits the certificate chain/key.
 read_pem_from_tty() {
   local output="$1" description="$2" line="" bytes=0
   [ "$SUBBOOST_ASSUME_YES" != 1 ] || return 1
   (
     exec 3<>/dev/tty || exit 1
     [ -t 3 ] || exit 1
-    printf '\n请粘贴完整%s（含 BEGIN/END 标记），另起一行输入 DONE 并回车结束。输入不回显：\n' "$description" >&3
+    printf '\n请粘贴完整%s（含 BEGIN/END 标记），粘贴后再按一次回车提交（空行结束），输入会回显：\n' "$description" >&3
     umask 077
     : > "$output"
-    while IFS= read -r -s line <&3; do
+    while IFS= read -r line <&3; do
       line="${line%$'\r'}"
-      [ "$line" != DONE ] || { printf '\n接收完成。\n' >&3; exit 0; }
+      if [ -z "$line" ]; then
+        [ "$bytes" -gt 0 ] || continue
+        grep -q '^-----END .*-----$' "$output" || { printf 'PEM 不完整，请继续粘贴。\n' >&3; continue; }
+        printf '接收完成。\n' >&3; exit 0
+      fi
       bytes=$((bytes + ${#line} + 1))
       [ "$bytes" -le 131072 ] || { printf '\n证书输入过长。\n' >&3; exit 1; }
       printf '%s\n' "$line" >> "$output"
@@ -1269,18 +1273,56 @@ YAML
   unset APP_URL SUBBOOST_PORT TRUST_PROXY_HEADERS
 }
 
+# Only inspect logs emitted during this check, not stale errors from older runs.
+https_failure_details() {
+  local since="$1" reason="$2" logfile="$TMP_DIR/https-caddy.log"
+  mkdir -p "$TMP_DIR"
+  (umask 077; : > "$logfile")
+  compose logs --no-color --no-log-prefix --since "$since" --tail 80 caddy >"$logfile" 2>&1 || true
+  if python3 - "$logfile" <<'PYRATE'
+import json, re, sys
+from datetime import datetime, timezone, timedelta
+errors = []
+for line in open(sys.argv[1], errors='replace'):
+    try: row = json.loads(line)
+    except ValueError: continue
+    error = str(row.get('error', ''))
+    if row.get('level') == 'error' and ('rateLimited' in error or 'too many certificates' in error):
+        if 'acme-staging' not in error: errors.append(error)
+if not errors: raise SystemExit(1)
+error = errors[-1]
+print('证书签发受限（ACME HTTP 429）：' + error, file=sys.stderr)
+m = re.search(r'retry after (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC', error)
+if m:
+    dt = datetime.strptime(m[1], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+    print('允许重试时间（北京时间）：' + dt.astimezone(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S'), file=sys.stderr)
+print('保留现有数据和证书卷，等待 CA 允许重试或使用 --resume-https 导入已有证书；不要再次 --restore。', file=sys.stderr)
+PYRATE
+  then return 0; fi
+  [ "$reason" = timeout ] || return 1
+  warn "HTTPS 检查超时，最后一次连接错误："
+  tail -n 8 "$TMP_DIR/https-curl.err" >&2 || true
+  warn "近期 Caddy 日志："
+  tail -n 40 "$logfile" >&2
+  warn "进一步检查：sudo subboost logs caddy"
+}
+
 https_start_and_check() {
   [ "$INSTALL_MODE" = server ] || return 0
   run_step "检查 HTTPS 配置" compose run --rm --no-deps caddy caddy validate --config /etc/subboost-tls/Caddyfile --adapter caddyfile || return 1
+  local i code="" check_since
+  check_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   compose up -d caddy || return 1
-  local i code=""
+  mkdir -p "$TMP_DIR"
+  (umask 077; : > "$TMP_DIR/https-curl.err")
   for i in $(seq 1 30); do
     # Imported Origin CA certs are not publicly trusted. -k is LOCAL ONLY.
     local -a verification=()
     [ "$TLS_MODE" != import ] || verification=(-k)
     if curl --noproxy '*' "${verification[@]}" -fsS --connect-timeout 3 --max-time 5 \
-      --resolve "$HTTPS_DOMAIN:443:127.0.0.1" "https://$HTTPS_DOMAIN/api/health/ready" >/dev/null 2>&1; then break; fi
-    [ "$i" = 30 ] && { warn "本机 HTTPS 未就绪：自动证书请检查 DNS/橙云/443、防火墙和系统时间；运行 subboost logs 检查。"; return 1; }
+      --resolve "$HTTPS_DOMAIN:443:127.0.0.1" "https://$HTTPS_DOMAIN/api/health/ready" >/dev/null 2>"$TMP_DIR/https-curl.err"; then break; fi
+    if [ "$((i % 5))" = 0 ] && https_failure_details "$check_since" rate; then return 1; fi
+    [ "$i" = 30 ] && { https_failure_details "$check_since" timeout; return 1; }
     [ "$((i % 5))" != 0 ] || say "正在等待 HTTPS 就绪（$i/30）..."
     sleep 2
   done

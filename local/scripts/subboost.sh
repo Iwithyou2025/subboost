@@ -70,6 +70,20 @@ docker_cmd() {
   if [ "$DOCKER_RUNNER" = "sudo docker" ]; then sudo docker "$@"; else docker "$@"; fi
 }
 
+check_install_access() {
+  local directory="$SUBBOOST_HOME"
+  # Walk parents too: an inaccessible parent can hide the install directory.
+  while [ "$directory" != / ] && [ "$directory" != . ]; do
+    if [ -d "$directory" ] && [ ! -x "$directory" ]; then
+      die "无权访问安装目录 $directory；请使用 sudo subboost 执行原命令。"
+    fi
+    directory="$(dirname "$directory")"
+  done
+  if [ -f "$ENV_FILE" ] && [ ! -r "$ENV_FILE" ]; then
+    die "无权读取配置 $ENV_FILE；请使用 sudo subboost 执行原命令。"
+  fi
+}
+
 compose() {
   compose_files "$ENV_FILE" "$COMPOSE_FILE" "$@"
 }
@@ -78,6 +92,7 @@ compose_files() {
   local env_file="$1"
   local compose_file="$2"
   shift 2
+  check_install_access
   [ -f "$compose_file" ] || die "Missing $compose_file"
   [ -f "$env_file" ] || die "Missing $env_file"
   local -a https_files=()
@@ -96,6 +111,7 @@ compose_files_with_image() {
 }
 
 load_env() {
+  check_install_access
   [ -f "$ENV_FILE" ] || die "Missing $ENV_FILE"
   set -a
   # shellcheck disable=SC1090
@@ -1349,6 +1365,7 @@ restart_cmd() {
 }
 
 doctor_cmd() {
+  check_install_access
   command -v docker >/dev/null 2>&1 || die "docker command is missing"
   docker_cmd compose version >/dev/null 2>&1 || die "docker compose plugin is missing"
   [ -d "$SUBBOOST_HOME" ] || die "Missing $SUBBOOST_HOME"
