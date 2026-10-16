@@ -1049,25 +1049,32 @@ if phase == 'diagnostic':
     selected = sorted(candidates, key=lambda a: (ipaddress.ip_address(a).version, a))[0]
     with open(output, 'w') as f: json.dump({'address': selected, 'stale': True}, f)
     raise SystemExit(0)
-if any(not row for row in complete):
-    print('公共 DNS 尚未返回有效地址，可能仍在传播，请稍后重查。', file=sys.stderr)
-    raise SystemExit(1)
+addresses = complete[0]
 if mode == 'auto':
-    if any(ipaddress.ip_address(a) in n for a in observed for n in networks):
-        print('公共 DNS 仍返回 Cloudflare 代理地址；可能橙云仍开启，也可能关闭后缓存尚未到期。请等待传播或选择导入证书。', file=sys.stderr)
+    # A complete resolver result is a candidate, not proof of ACME readiness.
+    # Do not let another resolver's cached proxy answer veto a direct candidate.
+    direct = [row for row in complete if row and all(
+        ipaddress.ip_address(a).is_global and
+        not any(ipaddress.ip_address(a) in n for n in networks) for a in row)]
+    if not direct:
+        print('尚无完整的公网直连 A/AAAA 结果；代理地址可能仍在缓存，不能据此判断控制台橙云状态。请等待传播或选择导入证书。', file=sys.stderr)
         raise SystemExit(1)
-    if any(not ipaddress.ip_address(a).is_global for a in observed):
-        print('自动证书需要公网 A/AAAA 地址。', file=sys.stderr)
+    if any(row != direct[0] for row in direct[1:]):
+        print('公共 DNS 返回不同的直连地址，无法判断正确源站，请检查 A/AAAA 配置后重查。', file=sys.stderr)
         raise SystemExit(1)
-    if any(row != complete[0] for row in complete[1:]):
-        print('公共 DNS 结果尚不一致，请等待传播后重查。', file=sys.stderr)
-        raise SystemExit(1)
-    print('公共 DNS 未发现 Cloudflare 代理地址，可继续尝试自动签发；仍需源站 TCP 443 可达。')
+    addresses = direct[0]
+    if any(row != addresses for row in complete) or observed != addresses:
+        print('DNS 尚在传播：已有完整公网直连结果，其他来源仍有代理地址、旧记录或不完整结果；允许继续尝试签发，不再等待所有解析器一致。')
+        print('预检查通过不代表证书已签发；以实际证书签发和 HTTPS 验证为准，失败后可继续配置，无需重新恢复数据。')
+    else:
+        print('公共 DNS 未发现 Cloudflare 代理地址，可继续尝试自动签发；仍需源站 TCP 443 可达。')
 else:
+    if any(not row for row in complete):
+        print('公共 DNS 尚未返回有效地址，可能仍在传播，请稍后重查。', file=sys.stderr)
+        raise SystemExit(1)
     print('导入证书模式：不要求关闭代理；Origin CA 证书需代理开启且使用完全（严格）模式。')
 if len(complete) < 2:
     print('一个公共 DNS 不可用，已采用另一个的完整 A/AAAA 结果；最终以 HTTPS 验证为准。')
-addresses = complete[0]
 local = set()
 try:
     raw = subprocess.run([sys.executable, '-c',

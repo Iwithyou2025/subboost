@@ -235,7 +235,7 @@ TLS_MODE=import
 https_dns_preflight
 `);
     expect(r.status, r.stderr).toBe(0);
-    expect(r.stderr).toContain("Cloudflare 代理地址");
+    expect(r.stderr).toContain("尚无完整的公网直连");
   });
 
   it("does not create services when noninteractive DNS preflight fails", () => {
@@ -360,8 +360,24 @@ https_dns_preflight
     expect(r.stdout).toContain("无需重启脚本");
   });
 
-  it.each(["ipv6proxy", "other", "nxdomain"])("blocks incomplete propagation: %s", (mode) => {
+  it.each(["other"])("blocks conflicting direct origins: %s", (mode) => {
     const r = run(dnsFixture + `export DNS_TEST_GOOGLE=${mode}\nhttps_dns_preflight`);
+    expect(r.status).not.toBe(0);
+  });
+
+  it.each(["proxy", "ipv6proxy", "nxdomain"])("continues with a complete direct answer while another resolver has stale records: %s", (mode) => {
+    const r = run(dnsFixture + `export DNS_TEST_GOOGLE=${mode}\nhttps_dns_preflight\n[ "$DNS_PUBLIC_ADDRESS" = 170.9.22.171 ]`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("DNS 尚在传播");
+  });
+
+  it("does not prefer Cloudflare when only Google has updated", () => {
+    const r = run(dnsFixture + 'export DNS_TEST_CF=proxy\nhttps_dns_preflight\n[ "$DNS_PUBLIC_ADDRESS" = 170.9.22.171 ]');
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it("rejects mixed direct A and proxy AAAA when neither resolver is fully direct", () => {
+    const r = run(dnsFixture + 'export DNS_TEST_CF=ipv6proxy DNS_TEST_GOOGLE=ipv6proxy\nhttps_dns_preflight');
     expect(r.status).not.toBe(0);
   });
 
@@ -491,7 +507,7 @@ https_start_and_check
   it("uses a fresh origin for diagnostic retry despite another resolver returning old proxy IPs", () => {
     const r = run(dnsFixture + String.raw`
 export DNS_TEST_GOOGLE=proxy
-if https_dns_preflight; then exit 10; fi
+https_dns_preflight
 https_dns_preflight diagnostic
 [ "$DNS_PUBLIC_ADDRESS" = 170.9.22.171 ]
 `);
