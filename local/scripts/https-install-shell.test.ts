@@ -20,6 +20,28 @@ ${body}`,
 }
 
 describe("HTTPS installation", () => {
+  it("collects and validates imported certificates before DNS checks", () => {
+    const r = run(`
+INSTALL_MODE=server TLS_MODE=import HTTPS_DOMAIN=example.com
+https_dependencies() { :; }
+collect_https_certificate() { echo certificate >> "$work/order"; }
+https_dns_preflight() { echo dns >> "$work/order"; }
+select_install_mode
+[ "$(cat "$work/order")" = "$(printf 'certificate\\ndns')" ]
+`);
+    expect(r.status, r.stderr).toBe(0);
+  });
+  it("does not request imported certificates in automatic mode", () => {
+    const r = run(`
+INSTALL_MODE=server TLS_MODE=auto HTTPS_DOMAIN=example.com
+https_dependencies() { :; }
+collect_https_certificate() { exit 31; }
+https_dns_preflight() { :; }
+select_install_mode
+`);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
   it("accepts hostnames but rejects configuration injection, IPs and malformed labels", () => {
     const r = run(`
 valid_https_domain x.bitwise.hidns.co

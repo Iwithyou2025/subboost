@@ -1121,6 +1121,8 @@ select_install_mode() {
       *) [ -z "$TLS_MODE" ] || die "SUBBOOST_TLS_MODE 必须为 auto 或 import。"; warn "请输入 1 或 2。" ;;
     esac
   done
+  # Finish certificate input before DNS checks and migration credentials.
+  if [ "$TLS_MODE" = import ]; then collect_https_certificate; fi
   while ! https_dns_preflight; do
     [ "$SUBBOOST_ASSUME_YES" != 1 ] || die "DNS 前置检查失败；尚未创建服务。修复 DNS 或选择导入证书后重试。"
     answer="$(prompt 'DNS 未满足条件：1 重新检查，2 更换证书方式，其他退出 [q]: ' q)"
@@ -1177,6 +1179,7 @@ PYDATE
 }
 
 collect_https_certificate() {
+  mkdir -p "$TMP_DIR"
   local cert="$TMP_DIR/origin.pem" key="$TMP_DIR/origin.key" method
   while true; do
     if [ -n "${SUBBOOST_TLS_CERT_FILE:-}" ] || [ -n "${SUBBOOST_TLS_KEY_FILE:-}" ]; then
@@ -1219,7 +1222,9 @@ import re, sys
 m = re.match(r'(\d+)\.(\d+)\.(\d+)', sys.argv[1])
 if not m or tuple(map(int, m.groups())) < (2,24,4): raise SystemExit(1)
 PYVERSION
-  [ "$TLS_MODE" != import ] || collect_https_certificate
+  if [ "$TLS_MODE" = import ]; then
+    validate_https_certificate "$TMP_DIR/origin.pem" "$TMP_DIR/origin.key" "$HTTPS_DOMAIN" || die "证书检查失败，请重新运行证书配置流程。"
+  fi
   HTTPS_FILES_CREATED=1
   prepare_private_directory "$SUBBOOST_HOME/https" || return 1
   if [ "$TLS_MODE" = import ]; then
