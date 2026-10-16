@@ -149,7 +149,7 @@ compose up -d
     const r = run(`
 INSTALL_MODE=server; TLS_MODE=import; HTTPS_DOMAIN=x.example.com
 compose() { return 0; }
-https_dns_preflight() { return 0; }
+https_dns_preflight() { return 1; }
 curl() { case "$*" in *--resolve*) return 0;; *) printf 522;; esac; }
 if https_start_and_check; then exit 1; fi
 `);
@@ -466,6 +466,50 @@ curl() {
 https_start_and_check
 `);
     expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("公共解析地址的 HTTPS 实测通过");
+  });
+});
+
+
+describe("final HTTPS verification does not reuse DNS issuance gates", () => {
+  it("accepts working HTTPS without consulting possibly stale public DNS again", () => {
+    const r = run(String.raw`
+INSTALL_MODE=server TLS_MODE=auto HTTPS_DOMAIN=example.com
+compose() { :; }
+https_dns_preflight() { echo UNEXPECTED_DNS_GATE; return 99; }
+curl() { case "$*" in *127.0.0.1*) return 0 ;; *) printf 200 ;; esac; }
+touch "$SUBBOOST_HOME/.https-pending"
+https_start_and_check
+[ ! -e "$SUBBOOST_HOME/.https-pending" ]
+`);
+    expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toContain("公网 HTTPS 验证通过");
+    expect(r.stdout).not.toContain("UNEXPECTED_DNS_GATE");
+  });
+
+  it("uses a fresh origin for diagnostic retry despite another resolver returning old proxy IPs", () => {
+    const r = run(dnsFixture + String.raw`
+export DNS_TEST_GOOGLE=proxy
+if https_dns_preflight; then exit 10; fi
+https_dns_preflight diagnostic
+[ "$DNS_PUBLIC_ADDRESS" = 170.9.22.171 ]
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("真实 HTTPS 重试");
+  });
+
+  it("does not report success merely because DNS contains a direct address", () => {
+    const r = run(String.raw`
+INSTALL_MODE=server TLS_MODE=auto HTTPS_DOMAIN=example.com
+compose() { :; }
+https_dns_preflight() { [ "$1" = diagnostic ]; DNS_PUBLIC_ADDRESS=170.9.22.171; }
+curl() { case "$*" in *127.0.0.1*) return 0 ;; *) printf 503 ;; esac; }
+touch "$SUBBOOST_HOME/.https-pending"
+if https_start_and_check; then exit 10; fi
+[ -f "$SUBBOOST_HOME/.https-pending" ]
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain("HTTP 503");
+    expect(r.stdout).not.toContain("公网 HTTPS 验证通过");
   });
 });
