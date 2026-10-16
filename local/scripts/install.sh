@@ -32,6 +32,28 @@ say() {
   printf '%s\n' "$*"
 }
 
+# Normal installs show stages, not Docker progress or database/Caddy internals.
+# A failed command retains its exit status and emits a bounded diagnostic tail.
+run_step() {
+  local label="$1" result logfile
+  shift
+  mkdir -p "$TMP_DIR"
+  logfile="$(mktemp "$TMP_DIR/step.XXXXXX")" || return 1
+  chmod 600 "$logfile"
+  say "$label..."
+  if "$@" >"$logfile" 2>&1; then
+    rm -f "$logfile"
+    say "$label：完成"
+    return 0
+  else
+    result=$?
+    warn "$label失败（退出码 $result），诊断如下："
+    tail -n 25 "$logfile" >&2
+    rm -f "$logfile"
+    return "$result"
+  fi
+}
+
 warn() {
   printf 'WARN: %s\n' "$*" >&2
 }
@@ -617,6 +639,46 @@ detect_public_host() {
   printf '%s\n' "$detected"
 }
 
+valid_local_ipv4() {
+  printf '%s\n' "$1" | awk -F. 'NF!=4 {exit 1} {for(i=1;i<=4;i++) if($i !~ /^[0-9]+$/ || $i>255) exit 1; if($1==0 || $1==127 || $1>=224 || ($1==169 && $2==254)) exit 1}'
+}
+
+detect_local_host() {
+  local candidate
+  candidate="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}' || true)"
+  if valid_local_ipv4 "$candidate"; then printf '%s\n' "$candidate"; return; fi
+  for candidate in $(hostname -I 2>/dev/null); do
+    if valid_local_ipv4 "$candidate"; then printf '%s\n' "$candidate"; return; fi
+  done
+  return 1
+}
+
+configure_restored_local_access() {
+  local answer port host
+  while true; do
+    answer="$(prompt '请输入本地端口号（输入回车将选择随机端口号）：' '')"
+    if [ -z "$answer" ]; then port="$(random_free_port)"; else port="$answer"; fi
+    if port_is_number "$port" && port_is_free "$port"; then break; fi
+    warn "端口无效或已被占用，请输入 1-65535 的可用端口。"
+    [ "$SUBBOOST_ASSUME_YES" != 1 ] || return 1
+  done
+  host="$(detect_local_host || true)"
+  if ! valid_local_ipv4 "$host"; then
+    warn "无法自动获取本机 IPv4 地址，请检查网络或手动提供；不会沿用备份中的地址。"
+    while true; do
+      host="$(prompt '请输入当前机器的 IPv4 地址（留空退出）：' '')"
+      [ -n "$host" ] || return 1
+      valid_local_ipv4 "$host" && break
+      warn "IPv4 地址无效，请重新输入。"
+    done
+  fi
+  set_env_value SUBBOOST_PORT "$port"
+  set_env_value APP_URL "http://$host:$port"
+  set_env_value TRUST_PROXY_HEADERS false
+  unset APP_URL SUBBOOST_PORT TRUST_PROXY_HEADERS
+  say "本次本地访问地址：http://$host:$port"
+}
+
 install_docker_engine() {
   confirm_or_quit "Docker is missing. Press Enter to install Docker automatically, or type q to exit: "
   require_curl
@@ -918,33 +980,103 @@ valid_https_domain() {
 }
 
 https_dns_preflight() {
-  # Published Cloudflare ranges (https://www.cloudflare.com/ips/), checked
-  # locally so detection does not depend on a second network service.
-  timeout 20 python3 - "$HTTPS_DOMAIN" "$TLS_MODE" <<'PYDNS'
-import ipaddress, socket, sys
-try:
-    addresses = sorted({x[4][0] for x in socket.getaddrinfo(sys.argv[1], 443, type=socket.SOCK_STREAM)})
-except OSError as exc:
-    print("DNS 查询失败: " + str(exc), file=sys.stderr)
-    raise SystemExit(1)
-if not addresses: raise SystemExit(1)
-print("域名当前解析: " + ", ".join(addresses))
+  mkdir -p "$TMP_DIR"
+  DNS_PUBLIC_ADDRESS=""
+  DNS_LOCAL_STALE=0
+  rm -f "$TMP_DIR/dns-result.json"
+  # Inspired by lego's distinction between recursive propagation and local
+  # resolution. This is A/AAAA preflight for TLS-ALPN, NOT DNS-01 validation.
+  # DoH avoids local DNS caches and UDP/53 filtering; TLS verification stays on.
+  timeout 18 python3 - "$HTTPS_DOMAIN" "$TLS_MODE" "$TMP_DIR/dns-result.json" <<'PYDNS'
+import concurrent.futures, ipaddress, json, socket, subprocess, sys
+from urllib.parse import urlencode
+
+domain, mode, output = sys.argv[1:]
+providers = [('Cloudflare', 'cloudflare-dns.com', '1.1.1.1', '/dns-query'),
+             ('Google', 'dns.google', '8.8.8.8', '/resolve')]
 ranges = "173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32"
 networks = [ipaddress.ip_network(x) for x in ranges.split()]
-if sys.argv[2] == "auto":
-    if any(ipaddress.ip_address(a) in n for a in addresses for n in networks):
-        print("自动证书无法通过 Cloudflare 橙云签发。请关闭代理并等待 DNS 生效，或改选导入证书。", file=sys.stderr)
+def query(provider, kind):
+    label, host, bootstrap, endpoint = provider
+    url = 'https://' + host + endpoint + '?' + urlencode({'name': domain, 'type': kind})
+    try:
+        raw = subprocess.run(['curl', '--noproxy', '*', '--resolve', f'{host}:443:{bootstrap}',
+            '--connect-timeout', '3', '--max-time', '6', '-fsS', '-H', 'accept: application/dns-json', url],
+            capture_output=True, text=True, timeout=8, check=True).stdout
+        data = json.loads(raw)
+        if data.get('Status') not in (0, 3) or data.get('TC'):
+            return None
+        values, ttls = set(), []
+        for answer in data.get('Answer', []):
+            if answer.get('type') == (1 if kind == 'A' else 28):
+                addr = ipaddress.ip_address(answer['data'])
+                if addr.version != (4 if kind == 'A' else 6): return None
+                values.add(str(addr)); ttls.append(int(answer.get('TTL', 0)))
+        return values, min(ttls, default=0), data['Status']
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return None
+with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    tasks = {(p[0], k): pool.submit(query, p, k) for p in providers for k in ('A', 'AAAA')}
+    results = {key: task.result() for key, task in tasks.items()}
+complete = []
+observed = set()
+for provider in providers:
+    name = provider[0]; rows = [results[(name, k)] for k in ('A', 'AAAA')]
+    for row in rows:
+        if row is not None: observed.update(row[0])
+    if any(row is None for row in rows):
+        print(name + ' 公共 DNS：查询不完整或超时（不是橙云状态判断）')
+        continue
+    addresses = set().union(*(row[0] for row in rows))
+    ttl = min((row[1] for row in rows if row[0]), default=0)
+    print(name + ' 公共 DNS：' + (', '.join(sorted(addresses)) or '无 A/AAAA 记录') + f'（TTL {ttl} 秒）')
+    complete.append(addresses)
+if not complete:
+    print('公共 DNS 查询失败。请检查出站 HTTPS 网络后重查；不会把网络故障当成橙云开启。', file=sys.stderr)
+    raise SystemExit(1)
+if any(not row for row in complete):
+    print('公共 DNS 尚未返回有效地址，可能仍在传播，请稍后重查。', file=sys.stderr)
+    raise SystemExit(1)
+if mode == 'auto':
+    if any(ipaddress.ip_address(a) in n for a in observed for n in networks):
+        print('公共 DNS 仍返回 Cloudflare 代理地址；可能橙云仍开启，也可能关闭后缓存尚未到期。请等待传播或选择导入证书。', file=sys.stderr)
         raise SystemExit(1)
-    if any(not ipaddress.ip_address(a).is_global for a in addresses):
-        print("自动证书需要公网 A/AAAA 地址。", file=sys.stderr)
+    if any(not ipaddress.ip_address(a).is_global for a in observed):
+        print('自动证书需要公网 A/AAAA 地址。', file=sys.stderr)
         raise SystemExit(1)
+    if any(row != complete[0] for row in complete[1:]):
+        print('公共 DNS 结果尚不一致，请等待传播后重查。', file=sys.stderr)
+        raise SystemExit(1)
+    print('公共 DNS 未发现 Cloudflare 代理地址，可继续尝试自动签发；仍需源站 TCP 443 可达。')
+else:
+    print('导入证书模式：不要求关闭代理；Origin CA 证书需代理开启且使用完全（严格）模式。')
+if len(complete) < 2:
+    print('一个公共 DNS 不可用，已采用另一个的完整 A/AAAA 结果；最终以 HTTPS 验证为准。')
+addresses = complete[0]
+local = set()
+try:
+    raw = subprocess.run([sys.executable, '-c',
+        'import socket,sys,json; print(json.dumps(sorted({x[4][0] for x in socket.getaddrinfo(sys.argv[1],443,type=socket.SOCK_STREAM)})))', domain],
+        capture_output=True, text=True, timeout=3, check=True).stdout
+    local = set(json.loads(raw))
+except (OSError, ValueError, subprocess.SubprocessError):
+    pass
+stale = local != addresses
+if stale:
+    print('系统解析与公共 DNS 不一致或不可用，可能是本机/上游缓存。无需重启脚本；本次入口验证使用上述公共 DNS 地址。')
+selected = sorted(addresses, key=lambda a: (ipaddress.ip_address(a).version, a))[0]
+with open(output, 'w') as f: json.dump({'address': selected, 'stale': stale}, f)
 PYDNS
+  local result=$?
+  [ "$result" = 0 ] || return "$result"
+  DNS_PUBLIC_ADDRESS="$(json_get address "$TMP_DIR/dns-result.json")"
+  [ "$(json_get stale "$TMP_DIR/dns-result.json")" != True ] || DNS_LOCAL_STALE=1
 }
 
 select_install_mode() {
   local answer
   while true; do
-    answer="${INSTALL_MODE:-$(prompt $'请选择安装方式：\n1. 本地安装（保持现有逻辑）\n2. 服务器安装（HTTPS）\n请选择 [1]: ' 1)}"
+    answer="${INSTALL_MODE:-$(prompt $'请选择安装方式：\n1. 本地环境安装\n2. 公网环境安装\n请选择 [1]: ' 1)}"
     case "$answer" in
       1|local) INSTALL_MODE=local; return ;;
       2|server) INSTALL_MODE=server; break ;;
@@ -976,12 +1108,7 @@ select_install_mode() {
       *) die "安装已停止；未恢复数据库。已有安装的数据保持不变。" ;;
     esac
   done
-  say "请确认云安全组允许 TCP 443；脚本不会清空防火墙或停止其他项目。"
-  if [ "$TLS_MODE" = auto ]; then
-    say "自动申请和续期均需域名直连本机 443；请保持橙云关闭，并清理错误的 AAAA 记录。"
-  else
-    say "Cloudflare 源站证书需保持橙云开启，并使用完全（严格）模式。"
-  fi
+  say "公网环境需要云安全组及防火墙允许 TCP 443；安装结束会验证 HTTPS 连通性。"
 }
 
 # Read /dev/tty, never pipeline stdin (curl | bash). Silent input keeps private
@@ -1122,8 +1249,8 @@ YAML
 
 https_start_and_check() {
   [ "$INSTALL_MODE" = server ] || return 0
-  compose run --rm --no-deps caddy caddy validate --config /etc/subboost-tls/Caddyfile --adapter caddyfile || return 1
-  compose up -d caddy || return 1
+  run_step "检查 HTTPS 配置" compose run --rm --no-deps caddy caddy validate --config /etc/subboost-tls/Caddyfile --adapter caddyfile || return 1
+  run_step "启动 HTTPS 服务" compose up -d caddy || return 1
   local i code=""
   for i in $(seq 1 30); do
     # Imported Origin CA certs are not publicly trusted. -k is LOCAL ONLY.
@@ -1135,7 +1262,15 @@ https_start_and_check() {
     [ "$((i % 5))" != 0 ] || say "正在等待 HTTPS 就绪（$i/30）..."
     sleep 2
   done
-  code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 "https://$HTTPS_DOMAIN/api/health/ready" 2>/dev/null)" || code=000
+  # Refresh after image downloads/ACME; do not retain a pre-install DNS snapshot.
+  https_dns_preflight || return 1
+  local -a dns_route=()
+  if [ "${DNS_LOCAL_STALE:-0}" = 1 ] && [ -n "${DNS_PUBLIC_ADDRESS:-}" ]; then
+    local public_ip="$DNS_PUBLIC_ADDRESS"
+    [[ "$public_ip" != *:* ]] || public_ip="[$public_ip]"
+    dns_route=(--resolve "$HTTPS_DOMAIN:443:$public_ip")
+  fi
+  code="$(curl "${dns_route[@]}" --noproxy '*' -sS -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 "https://$HTTPS_DOMAIN/api/health/ready" 2>/dev/null)" || code=000
   case "$code" in
     200) run_root rm -f "$SUBBOOST_HOME/.https-pending"; say "公网 HTTPS 验证通过。" ;;
     522|523) warn "本机正常，但 Cloudflare 522/523：检查 DNS 指向、云安全组 TCP 443、Docker FORWARD/DOCKER-USER 防火墙和完全（严格）模式。"; return 1 ;;
@@ -1160,7 +1295,7 @@ resume_https() {
   cp -a "$ENV_FILE" "$saved/env"
   cp -a "$SUBBOOST_HOME/https-compose.yml" "$saved/compose"
   cp -a "$SUBBOOST_HOME/https" "$saved/https"
-  if ! (prepare_https_config && compose run --rm --no-deps caddy caddy validate --config /etc/subboost-tls/Caddyfile --adapter caddyfile); then
+  if ! (prepare_https_config && run_step "检查 HTTPS 配置" compose run --rm --no-deps caddy caddy validate --config /etc/subboost-tls/Caddyfile --adapter caddyfile); then
     cp -a "$saved/env" "$ENV_FILE"
     cp -a "$saved/compose" "$SUBBOOST_HOME/https-compose.yml"
     cp -a "$saved/https/." "$SUBBOOST_HOME/https/"
@@ -1168,8 +1303,8 @@ resume_https() {
   fi
   unset APP_URL SUBBOOST_PORT TRUST_PROXY_HEADERS
   run_root touch "$SUBBOOST_HOME/.https-pending"
-  compose up -d caddy
-  compose restart caddy
+  run_step "启动 HTTPS 服务" compose up -d caddy
+  run_step "加载 HTTPS 配置" compose restart caddy
   https_start_and_check || die "数据保留。修复 DNS/443 后运行 sudo subboost restart；更换证书方式可重新运行安装脚本 --resume-https。"
   say "HTTPS 配置完成；未恢复或替换数据库。"
 }
@@ -1268,8 +1403,8 @@ main() {
     ensure_env_value SUBBOOST_RELEASE_URL "$SUBBOOST_UPDATE_RELEASE_URL"
     ensure_env_value SUBBOOST_COMPOSE_URL "$compose_url"
     ensure_env_value SUBBOOST_MANAGER_URL "$manager_url"
-    if [ "$INSTALL_MODE" != server ] && ! port_is_free "$(env_value SUBBOOST_PORT)"; then
-      die "Backup SUBBOOST_PORT is already in use: $(env_value SUBBOOST_PORT)"
+    if [ "$INSTALL_MODE" = local ]; then
+      configure_restored_local_access || die "本地访问地址配置未完成，尚未创建容器。"
     fi
   else
     : > "$ENV_FILE"
@@ -1331,32 +1466,26 @@ main() {
     printf '%s\n' "$services" | grep -Fxq "$service" || die "Candidate Compose is missing service: $service"
   done
   docker_cmd volume ls -q > "$volumes_before"
-  say "Pulling SubBoost image before creating containers..."
-  retry_network compose pull || die "镜像下载失败；尚未创建应用容器，可修复网络后重试。"
+  run_step "下载部署镜像" retry_network compose pull || die "镜像下载失败；尚未创建应用容器，可修复网络后重试。"
   if [ -n "$RESTORE_ARCHIVE" ]; then
-    say "Starting PostgreSQL for backup migration..."
-    if ! compose up -d db || ! wait_for_database; then
+    if ! run_step "启动数据库" compose up -d db || ! run_step "等待数据库就绪" wait_for_database; then
       cleanup_failed_install "$volumes_before"
       die "Migration installation failed while starting PostgreSQL; resources created by this run were cleaned up."
     fi
-    say "Validating database backup..."
-    if ! verify_restore_dump; then
+    if ! run_step "校验备份" verify_restore_dump; then
       cleanup_failed_install "$volumes_before"
       die "Migration installation stopped because the database backup is invalid."
     fi
-    say "Restoring database backup..."
-    if ! restore_database_dump || ! reset_restored_admin_password; then
+    if ! run_step "恢复数据" restore_database_dump || ! run_step "设置管理员账户" reset_restored_admin_password; then
       cleanup_failed_install "$volumes_before"
       die "Migration installation failed while restoring data or resetting the administrator password."
     fi
-    say "Starting SubBoost with the restored configuration..."
-    if ! compose up -d app || ! wait_for_health "$(env_value SUBBOOST_PORT)" || ! compose up -d cron; then
+    if ! run_step "启动应用" compose up -d app || ! run_step "检查应用健康" wait_for_health "$(env_value SUBBOOST_PORT)" || ! run_step "启动定时任务" compose up -d cron; then
       cleanup_failed_install "$volumes_before"
       die "Migration installation failed; resources created by this run were cleaned up."
     fi
   else
-    say "Starting SubBoost..."
-    if ! compose up -d db app || ! wait_for_health "$(env_value SUBBOOST_PORT)" || ! compose up -d cron; then
+    if ! run_step "启动数据库和应用" compose up -d db app || ! run_step "检查应用健康" wait_for_health "$(env_value SUBBOOST_PORT)" || ! run_step "启动定时任务" compose up -d cron; then
       cleanup_failed_install "$volumes_before"
       die "New installation failed; only resources created by this run were cleaned up."
     fi

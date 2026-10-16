@@ -149,6 +149,7 @@ compose up -d
     const r = run(`
 INSTALL_MODE=server; TLS_MODE=import; HTTPS_DOMAIN=x.example.com
 compose() { return 0; }
+https_dns_preflight() { return 0; }
 curl() { case "$*" in *--resolve*) return 0;; *) printf 522;; esac; }
 if https_start_and_check; then exit 1; fi
 `);
@@ -195,24 +196,45 @@ PYTTY
 
 });
 
-describe("HTTPS recovery regressions", () => {
-  it("rejects Cloudflare IPv4 and IPv6 before auto TLS, but allows imported certificates", () => {
-    const r = run(String.raw`
-mkdir -p "$work/python"
+const dnsFixture = String.raw`
+mkdir -p "$work/bin" "$work/python"
 cat > "$work/python/socket.py" <<'PY'
 SOCK_STREAM=1
 def getaddrinfo(*args, **kwargs):
     return [(0,0,0,0,('104.21.23.170',443)),(0,0,0,0,('2606:4700:3034::6815:17aa',443))]
 PY
-export PYTHONPATH="$work/python"
+cat > "$work/bin/curl" <<'PY'
+#!/usr/bin/env python3
+import json, os, sys
+url=sys.argv[-1]
+provider='GOOGLE' if 'dns.google' in url else 'CF'
+mode=os.environ.get('DNS_TEST_'+provider, 'direct')
+kind=28 if 'type=AAAA' in url else 1
+if mode=='timeout' or (mode=='ipv6fail' and kind==28): sys.exit(28)
+if mode=='malformed': print('not-json'); sys.exit(0)
+address='104.21.23.170' if mode=='proxy' else ('170.9.22.172' if mode=='other' else '170.9.22.171')
+answers=[] if kind==28 else [{'type':1,'data':address,'TTL':60}]
+if kind==28 and mode in ('proxy','ipv6proxy'):
+    answers=[{'type':28,'data':'2606:4700:3034::6815:17aa','TTL':60}]
+if mode=='nxdomain': answers=[]
+print(json.dumps({'Status':3 if mode=='nxdomain' else 0, 'Answer':answers}))
+PY
+chmod +x "$work/bin/curl"
+export PATH="$work/bin:$PATH" PYTHONPATH="$work/python"
 HTTPS_DOMAIN=example.com
 TLS_MODE=auto
+`;
+
+describe("HTTPS recovery regressions", () => {
+  it("rejects Cloudflare IPv4 and IPv6 before auto TLS, but allows imported certificates", () => {
+    const r = run(dnsFixture + String.raw`
+export DNS_TEST_CF=proxy DNS_TEST_GOOGLE=proxy
 if https_dns_preflight; then exit 10; fi
 TLS_MODE=import
 https_dns_preflight
 `);
     expect(r.status, r.stderr).toBe(0);
-    expect(r.stderr).toContain("Cloudflare 橙云");
+    expect(r.stderr).toContain("Cloudflare 代理地址");
   });
 
   it("does not create services when noninteractive DNS preflight fails", () => {
@@ -320,5 +342,129 @@ grep -q SUBBOOST_INSTALL_MODE=server "$ENV_FILE"
 `);
     expect(r.status, r.stderr).toBe(0);
     expect(r.stderr).toContain("已恢复旧配置");
+  });
+});
+
+describe("installer output, local restore and fresh public DNS", () => {
+  it("accepts agreeing public DNS despite stale system cache and re-queries on retry", () => {
+    const r = run(dnsFixture + String.raw`
+export DNS_TEST_CF=proxy DNS_TEST_GOOGLE=proxy
+if https_dns_preflight; then exit 10; fi
+export DNS_TEST_CF=direct DNS_TEST_GOOGLE=direct
+https_dns_preflight
+[ "$DNS_PUBLIC_ADDRESS" = 170.9.22.171 ]
+[ "$DNS_LOCAL_STALE" = 1 ]
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("无需重启脚本");
+  });
+
+  it.each(["ipv6proxy", "other", "nxdomain"])("blocks incomplete propagation: %s", (mode) => {
+    const r = run(dnsFixture + `export DNS_TEST_GOOGLE=${mode}\nhttps_dns_preflight`);
+    expect(r.status).not.toBe(0);
+  });
+
+  it("uses a complete provider if another times out, without treating failure as proxy state", () => {
+    const r = run(dnsFixture + "export DNS_TEST_GOOGLE=timeout\nhttps_dns_preflight");
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("一个公共 DNS 不可用");
+  });
+
+  it("does not treat unavailable AAAA lookup as absent AAAA records", () => {
+    const r = run(dnsFixture + "export DNS_TEST_GOOGLE=ipv6fail DNS_TEST_CF=ipv6fail\nhttps_dns_preflight");
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("公共 DNS 查询失败");
+    expect(r.stderr).not.toContain("橙云仍开启");
+  });
+
+  it("rejects malformed replies", () => {
+    const r = run(dnsFixture + "export DNS_TEST_GOOGLE=malformed DNS_TEST_CF=malformed\nhttps_dns_preflight");
+    expect(r.status).not.toBe(0);
+  });
+
+  it("hides successful command output, preserves shell state and reports failed command status", () => {
+    const r = run(String.raw`
+noisy() { RESULT=retained; echo 'INTERNAL_SUCCESS_LOG'; }
+run_step '启动服务' noisy
+[ "$RESULT" = retained ]
+fail() { echo 'CONNECTION_REFUSED' >&2; return 17; }
+if run_step '失败阶段' fail; then exit 10; else [ "$?" = 17 ]; fi
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).not.toContain("INTERNAL_SUCCESS_LOG");
+    expect(r.stderr).toContain("CONNECTION_REFUSED");
+    expect(r.stdout).toContain("启动服务：完成");
+  });
+
+  it("replaces restored URL and port without changing encryption keys or using stale exported values", () => {
+    const r = run(String.raw`
+printf 'APP_URL=http://192.168.0.156:38872\nSUBBOOST_PORT=38872\nENCRYPTION_KEY=original\n' > "$ENV_FILE"
+export APP_URL=http://old:38872 SUBBOOST_PORT=38872
+prompt() { echo ''; }
+random_free_port() { echo 45678; }
+port_is_free() { [ "$1" = 45678 ]; }
+detect_local_host() { echo 192.168.10.25; }
+configure_restored_local_access
+grep -q '^APP_URL=http://192.168.10.25:45678$' "$ENV_FILE"
+grep -q '^SUBBOOST_PORT=45678$' "$ENV_FILE"
+grep -q '^ENCRYPTION_KEY=original$' "$ENV_FILE"
+! printenv APP_URL
+! printenv SUBBOOST_PORT
+`);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it("reports failed local IP detection and refuses to reuse the old URL", () => {
+    const r = run(String.raw`
+printf 'APP_URL=http://old:3000\n' > "$ENV_FILE"
+prompt() { echo ''; }
+random_free_port() { echo 45678; }
+port_is_free() { return 0; }
+detect_local_host() { return 1; }
+configure_restored_local_access
+`);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("无法自动获取本机 IPv4");
+    expect(r.stdout).not.toContain("本次本地访问地址");
+  });
+});
+
+describe("restored local input validation", () => {
+  it("re-prompts a busy port and accepts a manual address when detection fails", () => {
+    const r = run(String.raw`
+printf 'APP_URL=http://old:3000\n' > "$ENV_FILE"
+printf '1\n' > "$work/input-index"
+prompt() {
+  n="$(cat "$work/input-index")"
+  echo "$((n+1))" > "$work/input-index"
+  case "$n" in 1) echo 3000 ;; 2) echo 41234 ;; 3) echo 192.168.10.30 ;; *) exit 99 ;; esac
+}
+SUBBOOST_ASSUME_YES=0
+port_is_free() { [ "$1" = 41234 ]; }
+detect_local_host() { return 1; }
+configure_restored_local_access
+grep -q '^APP_URL=http://192.168.10.30:41234$' "$ENV_FILE"
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain("端口无效或已被占用");
+    expect(r.stderr).toContain("无法自动获取");
+  });
+
+  it("verifies HTTPS using refreshed public DNS when local cache is stale", () => {
+    const r = run(String.raw`
+INSTALL_MODE=server TLS_MODE=auto HTTPS_DOMAIN=example.com
+compose() { :; }
+https_dns_preflight() { DNS_LOCAL_STALE=1; DNS_PUBLIC_ADDRESS=170.9.22.171; }
+curl() {
+  case "$*" in
+    *example.com:443:127.0.0.1*) return 0 ;;
+    *example.com:443:170.9.22.171*) printf 200 ;;
+    *) return 99 ;;
+  esac
+}
+https_start_and_check
+`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("公网 HTTPS 验证通过");
   });
 });

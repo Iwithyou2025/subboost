@@ -262,6 +262,8 @@ PY
       docker_login_if_needed() { :; }
       run_root() { "$@"; }
       port_is_free() { return 0; }
+      detect_local_host() { echo 192.168.10.25; }
+      random_free_port() { echo 45678; }
       systemctl() { :; }
       docker_cmd() {
         case "$*" in
@@ -302,13 +304,14 @@ verify-dump
 restore-dump
 reset-admin:NewPassword123!
 compose:up -d app
-health:32123
+health:45678
 compose:up -d cron
 manager:agent-install
 TRACE
       diff -u "$work/expected-trace" "$TEST_LOG"
-      cmp "$source_dir/subboost.env" "$install_dir/.env"
-      grep -Fq '访问地址: https://migrated.example:32123' <<< "$output"
+      grep -Fq 'SUBBOOST_PORT=45678' "$install_dir/.env"
+      grep -Fq 'ENCRYPTION_KEY=source-encryption-key' "$install_dir/.env"
+      grep -Fq '访问地址: http://192.168.10.25:45678' <<< "$output"
       grep -Fq '管理员账号: alice' <<< "$output"
       grep -Fq '管理员密码: NewPassword123!' <<< "$output"
       grep -Fq 'POSTGRES_PASSWORD=source_database_password' "$install_dir/.env"
