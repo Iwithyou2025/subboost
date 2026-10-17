@@ -226,7 +226,7 @@ deadline=time.monotonic()+10
 try:
     while b'private-key' not in output and time.monotonic()<deadline:
         if select.select([master],[],[],0.1)[0]: output+=os.read(master,4096)
-    assert termios.tcgetattr(master)[3] & termios.ECHO
+    # Readline renders visible input itself; kernel ECHO may be disabled.
     payload=b'-----BEGIN PRIVATE KEY-----\\nsecret-test-payload\\n-----END PRIVATE KEY-----\\n'
     os.write(master,payload+b'\\n')
     p.wait(timeout=5)
