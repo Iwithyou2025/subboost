@@ -262,7 +262,7 @@ PY
       docker_login_if_needed() { :; }
       run_root() { "$@"; }
       port_is_free() { return 0; }
-      detect_local_host() { echo 192.168.10.25; }
+      detect_public_host() { echo 170.9.22.171; }
       random_free_port() { echo 45678; }
       systemctl() { :; }
       docker_cmd() {
@@ -311,7 +311,7 @@ TRACE
       diff -u "$work/expected-trace" "$TEST_LOG"
       grep -Fq 'SUBBOOST_PORT=45678' "$install_dir/.env"
       grep -Fq 'ENCRYPTION_KEY=source-encryption-key' "$install_dir/.env"
-      grep -Fq '访问地址: http://192.168.10.25:45678' <<< "$output"
+      grep -Fq '访问地址: http://170.9.22.171:45678' <<< "$output"
       grep -Fq '管理员账号: alice' <<< "$output"
       grep -Fq '管理员密码: NewPassword123!' <<< "$output"
       grep -Fq 'POSTGRES_PASSWORD=source_database_password' "$install_dir/.env"

@@ -20,6 +20,37 @@ ${body}`,
 }
 
 describe("HTTPS installation", () => {
+  it("tries backup IPv4 sources before IPv6 and bypasses proxy environment", () => {
+    const r = run(`
+curl() { echo "$*" >> "$work/calls"; case "$*" in *--noproxy*\\ -4*icanhazip*) echo 170.9.22.171 ;; *) return 7 ;; esac; }
+[ "$(detect_public_host)" = 170.9.22.171 ]
+! grep -q -- '-6' "$work/calls"
+`);
+    expect(r.status, r.stderr).toBe(0);
+  });
+  it("falls back to public IPv6 and brackets the URL", () => {
+    const r = run(`
+curl() { case "$*" in *-6*) echo 2606:4700:4700::1111 ;; *) return 7 ;; esac; }
+prompt() { echo ''; }
+random_free_port() { echo 45678; }
+port_is_free() { return 0; }
+configure_restored_local_access
+grep -Fq 'APP_URL=http://[2606:4700:4700::1111]:45678' "$ENV_FILE"
+`);
+    expect(r.status, r.stderr).toBe(0);
+  });
+  it("rejects private, reserved, malformed, and wrong-family lookup replies", () => {
+    const r = run(`
+for value in 192.168.1.2 10.0.0.1 100.64.0.1 127.0.0.1 169.254.1.1 203.0.113.1 ::1 fd00::1 fe80::1 ff02::1 garbage; do
+ if valid_public_host "$value"; then exit 10; fi
+done
+curl() { echo 192.168.1.2; }
+if detect_public_host; then exit 11; fi
+if valid_public_host 2606:4700:4700::1111 4; then exit 12; fi
+`);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
   it("collects and validates imported certificates before DNS checks", () => {
     const r = run(`
 INSTALL_MODE=server TLS_MODE=import HTTPS_DOMAIN=example.com
@@ -55,7 +86,7 @@ done
 
   it("preserves the default local install without DNS or dependency installation", () => {
     const r = run(`
-https_dependencies() { exit 40; }
+https_dependencies() { :; }
 select_install_mode
 [ "$INSTALL_MODE" = local ]
 prepare_https_config
@@ -440,9 +471,9 @@ export APP_URL=http://old:38872 SUBBOOST_PORT=38872
 prompt() { echo ''; }
 random_free_port() { echo 45678; }
 port_is_free() { [ "$1" = 45678 ]; }
-detect_local_host() { echo 192.168.10.25; }
+detect_public_host() { echo 170.9.22.171; }
 configure_restored_local_access
-grep -q '^APP_URL=http://192.168.10.25:45678$' "$ENV_FILE"
+grep -q '^APP_URL=http://170.9.22.171:45678$' "$ENV_FILE"
 grep -q '^SUBBOOST_PORT=45678$' "$ENV_FILE"
 grep -q '^ENCRYPTION_KEY=original$' "$ENV_FILE"
 ! printenv APP_URL
@@ -457,11 +488,11 @@ printf 'APP_URL=http://old:3000\n' > "$ENV_FILE"
 prompt() { echo ''; }
 random_free_port() { echo 45678; }
 port_is_free() { return 0; }
-detect_local_host() { return 1; }
+detect_public_host() { return 1; }
 configure_restored_local_access
 `);
     expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain("无法自动获取本机 IPv4");
+    expect(r.stderr).toContain("无法自动获取公网 IPv4");
     expect(r.stdout).not.toContain("本次本地访问地址");
   });
 });
@@ -474,13 +505,13 @@ printf '1\n' > "$work/input-index"
 prompt() {
   n="$(cat "$work/input-index")"
   echo "$((n+1))" > "$work/input-index"
-  case "$n" in 1) echo 3000 ;; 2) echo 41234 ;; 3) echo 192.168.10.30 ;; *) exit 99 ;; esac
+  case "$n" in 1) echo 3000 ;; 2) echo 41234 ;; 3) echo 170.9.22.172 ;; *) exit 99 ;; esac
 }
 SUBBOOST_ASSUME_YES=0
 port_is_free() { [ "$1" = 41234 ]; }
-detect_local_host() { return 1; }
+detect_public_host() { return 1; }
 configure_restored_local_access
-grep -q '^APP_URL=http://192.168.10.30:41234$' "$ENV_FILE"
+grep -q '^APP_URL=http://170.9.22.172:41234$' "$ENV_FILE"
 `);
     expect(r.status, r.stderr).toBe(0);
     expect(r.stderr).toContain("端口无效或已被占用");

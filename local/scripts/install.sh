@@ -627,26 +627,30 @@ normalize_app_url() {
   fi
 }
 
+valid_public_host() {
+  python3 - "$1" "${2:-0}" <<'PYIP'
+import ipaddress, sys
+try:
+    a = ipaddress.ip_address(sys.argv[1])
+    family = int(sys.argv[2])
+    ok = a.is_global and not (a.is_multicast or a.is_reserved or a.is_unspecified or a.is_loopback or a.is_link_local)
+    if isinstance(a, ipaddress.IPv6Address) and a.ipv4_mapped: ok = False
+    if '%' in sys.argv[1]: ok = False
+    raise SystemExit(0 if ok and (family == 0 or family == a.version) else 1)
+except ValueError:
+    raise SystemExit(1)
+PYIP
+}
+
 detect_public_host() {
-  local detected=""
-  detected="$(curl -fsS --max-time 4 https://api.ipify.org 2>/dev/null || true)"
-  if [ -z "$detected" ]; then
-    detected="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
-  fi
-  if [ -z "$detected" ]; then detected="localhost"; fi
-  printf '%s\n' "$detected"
-}
-
-valid_local_ipv4() {
-  printf '%s\n' "$1" | awk -F. 'NF!=4 {exit 1} {for(i=1;i<=4;i++) if($i !~ /^[0-9]+$/ || $i>255) exit 1; if($1==0 || $1==127 || $1>=224 || ($1==169 && $2==254)) exit 1}'
-}
-
-detect_local_host() {
-  local candidate
-  candidate="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}' || true)"
-  if valid_local_ipv4 "$candidate"; then printf '%s\n' "$candidate"; return; fi
-  for candidate in $(hostname -I 2>/dev/null); do
-    if valid_local_ipv4 "$candidate"; then printf '%s\n' "$candidate"; return; fi
+  local family endpoint detected
+  # Exhaust IPv4 sources before trying IPv6; never substitute a LAN address.
+  for family in 4 6; do
+    for endpoint in https://api64.ipify.org https://icanhazip.com https://ifconfig.co/ip; do
+      detected="$(curl --noproxy '*' "-$family" -fsS --connect-timeout 2 --max-time 4 "$endpoint" 2>/dev/null)" || continue
+      detected="${detected%$'\r'}"
+      if valid_public_host "$detected" "$family"; then printf '%s\n' "$detected"; return 0; fi
+    done
   done
   return 1
 }
@@ -660,16 +664,17 @@ configure_restored_local_access() {
     warn "端口无效或已被占用，请输入 1-65535 的可用端口。"
     [ "$SUBBOOST_ASSUME_YES" != 1 ] || return 1
   done
-  host="$(detect_local_host || true)"
-  if ! valid_local_ipv4 "$host"; then
-    warn "无法自动获取本机 IPv4 地址，请检查网络或手动提供；不会沿用备份中的地址。"
+  host="$(detect_public_host || true)"
+  if ! valid_public_host "$host"; then
+    warn "无法自动获取公网 IPv4 或 IPv6 地址，请检查出站网络或手动提供公网 IP；不会使用内网地址或备份中的旧地址。"
     while true; do
-      host="$(prompt '请输入当前机器的 IPv4 地址（留空退出）：' '')"
+      host="$(prompt '请输入当前机器的公网 IPv4 或 IPv6 地址（留空退出）：' '')"
       [ -n "$host" ] || return 1
-      valid_local_ipv4 "$host" && break
-      warn "IPv4 地址无效，请重新输入。"
+      valid_public_host "$host" && break
+      warn "请输入有效的公网 IPv4 或 IPv6，不能使用内网、回环或保留地址。"
     done
   fi
+  [[ "$host" != *:* ]] || host="[$host]"
   set_env_value SUBBOOST_PORT "$port"
   set_env_value APP_URL "http://$host:$port"
   set_env_value TRUST_PROXY_HEADERS false
@@ -950,7 +955,7 @@ https_dependencies() {
   local missing=0 tool
   for tool in curl openssl python3 timeout; do command -v "$tool" >/dev/null 2>&1 || missing=1; done
   [ "$missing" = 1 ] || return 0
-  say "正在安装 HTTPS 配置所需的依赖..."
+  say "正在安装网络检测与 HTTPS 配置所需的依赖..."
   if command -v apt-get >/dev/null 2>&1; then
     retry_network run_root apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update || die "软件源不可用，请修复网络后重试。"
     retry_network run_root env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y curl ca-certificates openssl python3 coreutils || die "依赖安装失败。"
@@ -1100,7 +1105,7 @@ select_install_mode() {
   while true; do
     answer="${INSTALL_MODE:-$(prompt $'请选择安装方式：\n1. 本地环境安装\n2. 公网环境安装\n请选择 [1]: ' 1)}"
     case "$answer" in
-      1|local) INSTALL_MODE=local; return ;;
+      1|local) INSTALL_MODE=local; https_dependencies; return ;;
       2|server) INSTALL_MODE=server; break ;;
       *) [ -z "$INSTALL_MODE" ] || die "SUBBOOST_INSTALL_MODE 必须为 local 或 server。"; warn "请输入 1 或 2。" ;;
     esac
@@ -1508,21 +1513,7 @@ main() {
     ensure_env_value DATABASE_URL "$database_url"
 
     if [ "$INSTALL_MODE" != server ]; then
-    current_port="${SUBBOOST_PORT:-$(env_value SUBBOOST_PORT || true)}"
-    current_url="${APP_URL:-$(env_value APP_URL || true)}"
-
-    default_host="$(detect_public_host)"
-    if [ -n "$current_url" ]; then
-      default_url="$(url_without_port "$current_url")"
-    else
-      default_url="http://$default_host"
-    fi
-    recommended_port="$(recommended_port_from "$current_port")"
-    input_url="$(prompt "请输入 SubBoost 访问地址，直接回车会自动填入服务器 ip [$default_url]: " "$default_url")"
-    selected_port="$(prompt_for_port "$recommended_port")"
-    final_url="$(normalize_app_url "$(url_without_port "$input_url")" "$selected_port")"
-    set_env_value SUBBOOST_PORT "$selected_port"
-    set_env_value APP_URL "$final_url"
+    configure_restored_local_access || die "公网访问地址配置未完成，尚未创建容器。"
     fi
   fi
 
