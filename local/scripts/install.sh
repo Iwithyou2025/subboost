@@ -144,7 +144,7 @@ prompt() {
   fi
   if { exec 3<>/dev/tty; } 2>/dev/null; then
     if [ -t 3 ] && printf '%s' "$message" >&3 2>/dev/null; then
-      IFS= read -r answer <&3 2>/dev/null || answer=""
+      IFS= read -e -r -u 3 answer >&3 2>/dev/null || answer=""
       printf '\n' >&3 2>/dev/null || true
     fi
     exec 3>&-
@@ -381,7 +381,17 @@ read_secret_from_tty() {
     if [ -t 3 ]; then
       available=1
       printf '%s' "$message" >&3
-      IFS= read -r -s -u 3 answer || answer=""
+      # Read characters without echo; support both terminal Backspace codes.
+      local character
+      while true; do
+        if ! IFS= read -r -s -n 1 -u 3 character; then available=0; break; fi
+        case "$character" in
+          '') break ;;
+          $'\177'|$'\010') answer="${answer%?}" ;;
+          $'\025') answer="" ;;
+          *) answer+="$character" ;;
+        esac
+      done
       printf '\n' >&3
     fi
     exec 3>&-
@@ -1151,7 +1161,7 @@ read_pem_from_tty() {
     printf '\n请粘贴完整%s（含 BEGIN/END 标记），粘贴后再按一次回车提交（空行结束），输入会回显：\n' "$description" >&3
     umask 077
     : > "$output"
-    while IFS= read -r line <&3; do
+    while IFS= read -e -r -u 3 line >&3; do
       line="${line%$'\r'}"
       if [ -z "$line" ]; then
         [ "$bytes" -gt 0 ] || continue

@@ -1261,7 +1261,7 @@ delete_cmd() {
 
   say "警告：此操作将永久删除 SubBoost 的数据库、配置、备份、容器、数据卷和应用镜像。"
   printf '请输入 DELETE 确认删除，其他输入将取消: '
-  IFS= read -r confirmation || confirmation=""
+  IFS= read -e -r confirmation || confirmation=""
   if [ "$confirmation" != "DELETE" ]; then
     say "已取消删除。"
     return 0
@@ -1401,7 +1401,7 @@ menu_cmd() {
   local choice="" restore_path=""
   if [ -t 0 ]; then
     printf 'Choose: '
-    IFS= read -r choice || choice=""
+    IFS= read -e -r choice || choice=""
   fi
   case "$choice" in
     1) status_cmd ;;
@@ -1410,7 +1410,7 @@ menu_cmd() {
     4) backup_cmd ;;
     5)
       printf 'Backup ZIP path: '
-      IFS= read -r restore_path || restore_path=""
+      IFS= read -e -r restore_path || restore_path=""
       [ -n "$restore_path" ] || die "Backup path is required."
       restore_cmd "$restore_path"
       ;;
