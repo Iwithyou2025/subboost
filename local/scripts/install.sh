@@ -373,12 +373,16 @@ valid_migration_admin_password() {
   [ "${#1}" -ge 10 ] && [ "${#1}" -le 72 ] && [[ "$1" =~ ^[A-Za-z0-9._~!@#%^*+=:?,-]+$ ]]
 }
 
-read_secret_from_tty() {
+read_secret_from_tty() (
   local message="$1"
   local answer=""
   local available=0
   if { exec 3<>/dev/tty; } 2>/dev/null; then
     if [ -t 3 ]; then
+      local terminal_state
+      terminal_state="$(stty -g <&3)" || return 1
+      trap 'stty "$terminal_state" <&3 2>/dev/null || true' EXIT
+      stty -echo -icanon min 1 time 0 <&3 || return 1
       available=1
       printf '%s' "$message" >&3
       # Read characters without echo; support both terminal Backspace codes.
@@ -394,11 +398,11 @@ read_secret_from_tty() {
       done
       printf '\n' >&3
     fi
-    exec 3>&-
+    # The subshell closes fd 3 after the EXIT trap restores terminal settings.
   fi
   [ "$available" = "1" ] || return 1
   printf '%s\n' "$answer"
-}
+)
 
 collect_migration_admin_password() {
   local first="${SUBBOOST_MIGRATION_ADMIN_PASSWORD:-}"
