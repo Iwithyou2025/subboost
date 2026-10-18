@@ -97,6 +97,30 @@ export function createSourceActions(set: SetState, get: GetState, setAndGenerate
       const removed = new Set(Array.from(prevIds).filter((id) => !nextIds.has(id)));
 
       if (removed.size === 0) {
+        const reordered = prev.length === sources.length &&
+          sources.every((source) => prevIds.has(source.id)) &&
+          sources.some((source, index) => source.id !== prev[index].id);
+        if (reordered) {
+          setAndGenerateConfig((state) => {
+            const sourceOrder = new Map(sources.map((source, index) => [source.id, index]));
+            // Shared nodes belong to the first matching source in the new order.
+            const rankedNodes = state.nodes.map((node) => ({
+              node,
+              rank: getNodeSourceIds(node).reduce(
+                (rank, id) => Math.min(rank, sourceOrder.get(id) ?? Infinity), Infinity
+              ),
+            }));
+            const ordered = rankedNodes.filter(({ rank }) => Number.isFinite(rank))
+              .sort((a, b) => a.rank - b.rank);
+            let index = 0;
+            return {
+              sources,
+              // Keep manual/unassociated nodes in place and preserve order within each source.
+              nodes: rankedNodes.map(({ node, rank }) => Number.isFinite(rank) ? ordered[index++].node : node),
+            };
+          });
+          return;
+        }
         set({ sources });
         return;
       }
