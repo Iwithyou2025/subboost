@@ -1,4 +1,6 @@
 import type { ParsedNode, ParseResult } from "@subboost/core/types/node";
+import type { ProxyGroupAdvancedConfig, ProxyGroupMemberRef } from "@subboost/core/types/config";
+import { normalizeProxyGroupAdvancedConfig } from "@subboost/core/proxy-group-advanced";
 import { parseSubscription } from "@subboost/core/parser";
 import { buildNodeContentKey, buildScopedNodeIdentityKey } from "@subboost/core/node-identity";
 import {
@@ -113,10 +115,32 @@ export function createSourceActions(set: SetState, get: GetState, setAndGenerate
             const ordered = rankedNodes.filter(({ rank }) => Number.isFinite(rank))
               .sort((a, b) => a.rank - b.rank);
             let index = 0;
+            const nodes = rankedNodes.map(({ node, rank }) => Number.isFinite(rank) ? ordered[index++].node : node);
+            const nodeNames = new Set(nodes.map((node) => node.name));
+            const syncMemberOrder = (advanced: ProxyGroupAdvancedConfig | undefined) => {
+              const memberOrder = normalizeProxyGroupAdvancedConfig(advanced).memberOrder;
+              if (!memberOrder?.some((ref) => ref.kind === "node" && nodeNames.has(ref.name))) return advanced;
+              // Include implicit trailing nodes too: a partial saved order must not pin them last.
+              // memberOrder only orders existing members; it does not add nodes to a group.
+              const refs: ProxyGroupMemberRef[] = nodes.map((node) => ({ kind: "node", name: node.name }));
+              let next = 0;
+              return {
+                ...advanced,
+                memberOrder: [
+                  ...memberOrder.map((ref) => ref.kind === "node" && nodeNames.has(ref.name) ? refs[next++] : ref),
+                  ...refs.slice(next),
+                ],
+              };
+            };
             return {
               sources,
               // Keep manual/unassociated nodes in place and preserve order within each source.
-              nodes: rankedNodes.map(({ node, rank }) => Number.isFinite(rank) ? ordered[index++].node : node),
+              nodes,
+              proxyGroupAdvanced: Object.fromEntries(Object.entries(state.proxyGroupAdvanced)
+                .map(([id, advanced]) => [id, syncMemberOrder(advanced) ?? advanced])),
+              customProxyGroups: state.customProxyGroups.map((group) => ({
+                ...group, advanced: syncMemberOrder(group.advanced),
+              })),
             };
           });
           return;
