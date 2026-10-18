@@ -3,6 +3,7 @@ import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-fil
 import type { ParsedNode } from "@subboost/core/types/node";
 import type { SubscriptionSource } from "./definitions";
 import { moveSubscriptionSource } from "@subboost/ui/product/subscription/source-order";
+import { generateClashConfig } from "@subboost/core/generator";
 import {
   PROXY_PROVIDER_HINT,
   createHarness,
@@ -122,6 +123,59 @@ describe("createSourceActions", () => {
     expect(getState().nodes).toBe(nodes);
     actions.setSources([...getState().sources, source({ id: "c" })]);
     expect(getState().nodes).toBe(nodes);
+  });
+
+  it.each([false, true])("exports synchronized built-in and custom group nodes with partial order=%s", (partial) => {
+    const sources = [source({ id: "b" }), source({ id: "a" })];
+    const advanced = {
+      memberOrder: [
+        { kind: "direct" }, { kind: "node", name: "B" }, { kind: "reject" },
+        ...(!partial ? [{ kind: "node", name: "A" }] : []),
+      ],
+      excludedMembers: [{ kind: "node", name: "Hidden" }],
+    };
+    const dialerProxyGroups = [{ id: "relay", name: "Relay", relayNodes: ["B", "A"], targetNodes: ["A"] }];
+    const { actions, getState } = createHarness({
+      sources,
+      nodes: [node("B", { _sourceIds: ["b"] }), node("A", { _sourceIds: ["a"] }), node("Hidden", { _sourceIds: ["a"] })],
+      proxyGroupAdvanced: { select: advanced },
+      customProxyGroups: [{ id: "custom", name: "Custom", groupType: "select", advanced }],
+      dialerProxyGroups,
+    });
+    actions.setSources(moveSubscriptionSource(sources, "a", "up"));
+    const state = getState();
+    const config = generateClashConfig({
+      nodes: state.nodes, userConfig: { enabledGroups: ["select", "auto"] },
+      proxyGroupAdvanced: state.proxyGroupAdvanced, customProxyGroups: state.customProxyGroups,
+    });
+    expect(config.proxies?.map((node) => node.name)).toEqual(["A", "Hidden", "B"]);
+    const groups = config["proxy-groups"] ?? [];
+    expect(groups.filter((group) => group.type === "select")).toHaveLength(2);
+    for (const group of groups.filter((group) => group.type === "select")) {
+      expect(group.proxies?.filter((name) => ["A", "B", "Hidden"].includes(name))).toEqual(["A", "B"]);
+      expect(group.proxies?.slice(0, 3)).toEqual(["DIRECT", "A", "REJECT"]);
+    }
+    expect(state.dialerProxyGroups).toBe(dialerProxyGroups);
+    expect(advanced.memberOrder[1]).toEqual({ kind: "node", name: "B" });
+    expect(state.proxyGroupAdvanced.select.excludedMembers).toBe(advanced.excludedMembers);
+  });
+
+  it("preserves group references and leaves groups without saved node order untouched", () => {
+    const sources = [source({ id: "b" }), source({ id: "a" })];
+    const untouched = { includeRegex: "A" };
+    const { actions, getState } = createHarness({
+      sources, nodes: [node("B", { _sourceIds: ["b"] }), node("A", { _sourceIds: ["a"] })],
+      proxyGroupAdvanced: {
+        select: { memberOrder: [{ kind: "module", id: "auto" }, { kind: "node", name: "B" }, { kind: "custom", id: "custom" }, { kind: "node", name: "A" }] },
+        auto: untouched,
+      },
+    });
+    actions.setSources(moveSubscriptionSource(sources, "a", "up"));
+    expect(getState().proxyGroupAdvanced.select.memberOrder).toEqual([
+      { kind: "module", id: "auto" }, { kind: "node", name: "A" },
+      { kind: "custom", id: "custom" }, { kind: "node", name: "B" },
+    ]);
+    expect(getState().proxyGroupAdvanced.auto).toBe(untouched);
   });
 
   it("can reorder empty sources without nodes", () => {
