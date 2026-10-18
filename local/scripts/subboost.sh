@@ -667,6 +667,28 @@ status_cmd() {
   say "常用命令: subboost logs / subboost backup / subboost restore / subboost update / subboost restart / subboost doctor"
 }
 
+pull_update_images() {
+  local image="$1" candidate_env="$2" candidate_compose="$3" old_env="$4" old_compose="$5"
+  local services old_services service candidate_image previous_image
+  services="$(compose_files_with_image "$image" "$candidate_env" "$candidate_compose" config --services)" || return 1
+  old_services="$(compose_files "$old_env" "$old_compose" config --services)" || return 1
+  local -a pull_services=(app)
+  while IFS= read -r service; do
+    [ -n "$service" ] && [ "$service" != app ] || continue
+    candidate_image="$(compose_files_with_image "$image" "$candidate_env" "$candidate_compose" config --images "$service")" || return 1
+    [ -n "$candidate_image" ] || { warn "Cannot resolve image for service: $service"; return 1; }
+    previous_image=""
+    if printf '%s\n' "$old_services" | grep -Fxq "$service"; then
+      previous_image="$(compose_files "$old_env" "$old_compose" config --images "$service")" || return 1
+    fi
+    if [ "$candidate_image" != "$previous_image" ] || ! docker_cmd image inspect "$candidate_image" >/dev/null 2>&1; then
+      pull_services+=("$service")
+    fi
+  done <<< "$services"
+  say "Pulling update images before the maintenance window: ${pull_services[*]}"
+  compose_files_with_image "$image" "$candidate_env" "$candidate_compose" pull "${pull_services[@]}"
+}
+
 update_cmd() {
   load_env
   local release_url="${SUBBOOST_RELEASE_URL:-}"
@@ -745,8 +767,7 @@ fi
   for service in app db cron; do
     printf '%s\n' "$services" | grep -Fxq "$service" || die "Candidate Compose is missing service: $service"
   done
-  say "Pulling candidate image before the maintenance window..."
-  compose_files_with_image "$image" "$candidate_env" "$candidate_compose" pull
+  pull_update_images "$image" "$candidate_env" "$candidate_compose" "$old_env" "$old_compose" || die "Image download failed; update cancelled before stopping services."
 
   app_id="$(service_container_id app)"
   [ -n "$app_id" ] || die "Cannot identify the current app container for rollback."
