@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resolveNodeNameFilter } from "@subboost/core/subscription/node-name-filter";
 import type { ParsedNode } from "@subboost/core/types/node";
 import type { SubscriptionSource } from "./definitions";
+import { moveSubscriptionSource } from "@subboost/ui/product/subscription/source-order";
 import {
   PROXY_PROVIDER_HINT,
   createHarness,
@@ -85,6 +86,50 @@ describe("createSourceActions", () => {
 
     expect(getState().sources).toEqual([next]);
     expect(getState().nodes.map((item: ParsedNode) => item.name)).toEqual(["Existing"]);
+  });
+
+  it("moves source nodes together while preserving internal order, shared nodes and manual positions", () => {
+    const sources = [source({ id: "a" }), source({ id: "b" })];
+    const nodes = [
+      node("B2", { _sourceIds: ["b"] }),
+      node("Manual"),
+      node("Shared", { _sourceIds: ["b", "a"] }),
+      node("B1", { _sourceIds: ["b"] }),
+      node("A2", { _sourceIds: ["a"] }),
+      node("A1", { _sourceIds: ["a"] }),
+    ];
+    const listenerPorts = { A1: 41001 };
+    const { actions, getState } = createHarness({ sources, nodes, listenerPorts });
+
+    actions.setSources(moveSubscriptionSource(sources, "b", "up"));
+    expect(getState().nodes.map((item: ParsedNode) => item.name))
+      .toEqual(["B2", "Manual", "Shared", "B1", "A2", "A1"]);
+    actions.setSources(moveSubscriptionSource(getState().sources, "a", "up"));
+    expect(getState().nodes.map((item: ParsedNode) => item.name))
+      .toEqual(["Shared", "Manual", "A2", "A1", "B2", "B1"]);
+    expect(new Set(getState().nodes).size).toBe(nodes.length);
+    expect(getState().nodes).toEqual(expect.arrayContaining(nodes));
+    expect(getState().listenerPorts).toBe(listenerPorts);
+  });
+
+  it("preserves manual node ordering for edits, additions and boundary moves", () => {
+    const sources = [source({ id: "a" }), source({ id: "b" })];
+    const nodes = [node("B", { _sourceIds: ["b"] }), node("A", { _sourceIds: ["a"] })];
+    const { actions, getState } = createHarness({ sources, nodes });
+    actions.setSources(moveSubscriptionSource(sources, "a", "up"));
+    expect(getState().nodes).toBe(nodes);
+    actions.setSources(sources.map((item) => ({ ...item, tag: "edited" })));
+    expect(getState().nodes).toBe(nodes);
+    actions.setSources([...getState().sources, source({ id: "c" })]);
+    expect(getState().nodes).toBe(nodes);
+  });
+
+  it("can reorder empty sources without nodes", () => {
+    const sources = [source({ id: "a" }), source({ id: "b" })];
+    const { actions, getState } = createHarness({ sources, nodes: [] });
+    actions.setSources(moveSubscriptionSource(sources, "a", "down"));
+    expect(getState().sources.map((item: SubscriptionSource) => item.id)).toEqual(["b", "a"]);
+    expect(getState().nodes).toEqual([]);
   });
 
   it("parses pasted content, deduplicates existing nodes, and respects deleted origins", () => {
