@@ -85,7 +85,8 @@ ENV
         if [ "$1" = "compose" ]; then
           case "$*" in
             "compose version"*) return 0 ;;
-            *" config") return 0 ;;
+            *" config --images "*) printf 'support-image\\n'; return 0 ;;
+          *" config") return 0 ;;
             *" ps -q app") printf 'app-id\\n'; return 0 ;;
             *" ps -q db") printf 'db-id\\n'; return 0 ;;
             *" ps -q cron") printf 'cron-id\\n'; return 0 ;;
@@ -147,7 +148,8 @@ ENV
         if [ "$1" = "compose" ]; then
           case "$*" in
             "compose version"*) return 0 ;;
-            *" config") return 0 ;;
+            *" config --images "*) printf 'support-image\\n'; return 0 ;;
+          *" config") return 0 ;;
             *" ps -q app") printf 'app-id\\n'; return 0 ;;
             *" ps -q db") printf 'db-id\\n'; return 0 ;;
             *" ps -q cron") printf 'cron-id\\n'; return 0 ;;
@@ -201,7 +203,8 @@ ENV
         if [ "$1" = "compose" ]; then
           case "$*" in
             "compose version"*) return 0 ;;
-            *" config") return 0 ;;
+            *" config --images "*) printf 'support-image\\n'; return 0 ;;
+          *" config") return 0 ;;
             *" ps -q app") printf 'app-id\\n'; return 0 ;;
             *" ps -q db") printf 'db-id\\n'; return 0 ;;
             *" ps -q cron") printf 'cron-id\\n'; return 0 ;;
@@ -269,8 +272,9 @@ ENV
           case "$*" in
             "compose version"*) return 0 ;;
             *" config --services") printf 'app\\ndb\\ncron\\n'; return 0 ;;
-            *" config") return 0 ;;
-            *" pull") return 0 ;;
+            *" config --images "*) printf 'support-image\\n'; return 0 ;;
+          *" config") return 0 ;;
+            *" pull app") return 0 ;;
             *"pg_dump -Fc"*) printf 'custom-dump'; return 0 ;;
             *"pg_restore --list"*) cat >/dev/null; return 0 ;;
             *" up -d --remove-orphans") return 0 ;;
@@ -361,7 +365,8 @@ ENV
           case "$*" in
             "compose version"*) return 0 ;;
             *" config --services") printf 'app\\ndb\\ncron\\n'; return 0 ;;
-            *" config" | *" pull" | *" stop cron app") return 0 ;;
+            *" config --images "*) printf 'support-image\\n'; return 0 ;;
+            *" config" | *" pull app" | *" stop cron app") return 0 ;;
             *"pg_dump -Fc"*) printf 'custom-dump'; return 0 ;;
             *"pg_restore --list"* | *"pg_restore --clean"*) cat >/dev/null; return 0 ;;
             *"candidate-compose.yml up -d --no-deps --force-recreate cron") return 1 ;;
@@ -452,8 +457,9 @@ ENV
           case "$*" in
             "compose version"*) return 0 ;;
             *" config --services") printf 'app\\ndb\\ncron\\n'; return 0 ;;
-            *" config") return 0 ;;
-            *" pull")
+            *" config --images "*) printf 'support-image\\n'; return 0 ;;
+          *" config") return 0 ;;
+            *" pull app")
               printf 'pull_image=%s\\n' "\${SUBBOOST_IMAGE:-}" >> "$docker_log"
               return 0
               ;;
@@ -489,7 +495,7 @@ ENV
     expect(result.stdout).not.toContain("candidate_release_image=old-candidate-image");
     expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml config$/m);
     expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml config --services$/m);
-    expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml pull$/m);
+    expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml pull app$/m);
     expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml up -d db$/m);
     expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml up -d --no-deps --force-recreate app$/m);
     expect(result.stdout).toMatch(/candidate_image=new-image candidate_release_image=new-image command=compose.*candidate-compose\.yml up -d --no-deps --force-recreate cron$/m);
@@ -497,7 +503,7 @@ ENV
     expect(result.stdout).toContain("SUBBOOST_CANDIDATE_IMAGE=new-image");
     expect(result.stdout).toContain("SUBBOOST_COMPOSE_URL=file://");
     expect(result.stdout).toContain("SUBBOOST_MANAGER_URL=file://");
-    const pullIndex = result.stdout.search(/^command=compose.* pull$/m);
+    const pullIndex = result.stdout.search(/^command=compose.* pull app$/m);
     const pauseIndex = result.stdout.indexOf(" stop cron app");
     const dumpIndex = result.stdout.indexOf("pg_dump -Fc");
     const candidateStartIndex = result.stdout.indexOf("candidate-compose.yml", dumpIndex);
@@ -559,8 +565,9 @@ JSON
           case "$*" in
             "compose version"*) return 0 ;;
             *" config --services") printf 'app\\ndb\\ncron\\n'; return 0 ;;
-            *" config") return 0 ;;
-            *" pull")
+            *" config --images "*) printf 'support-image\\n'; return 0 ;;
+          *" config") return 0 ;;
+            *" pull app")
               printf 'pull_image=%s\\n' "\${SUBBOOST_IMAGE:-}" >> "$docker_log"
               return 0
               ;;
