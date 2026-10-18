@@ -137,7 +137,7 @@ export function createSourceActions(set: SetState, get: GetState, setAndGenerate
               // Keep manual/unassociated nodes in place and preserve order within each source.
               nodes,
               proxyGroupAdvanced: Object.fromEntries(Object.entries(state.proxyGroupAdvanced)
-                .map(([id, advanced]) => [id, syncMemberOrder(advanced)])),
+                .map(([id, advanced]) => [id, syncMemberOrder(advanced) ?? advanced])),
               customProxyGroups: state.customProxyGroups.map((group) => ({
                 ...group, advanced: syncMemberOrder(group.advanced),
               })),
