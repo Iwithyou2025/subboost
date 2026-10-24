@@ -357,7 +357,11 @@ create_backup_pair() {
   BACKUP_DB_OUT="$BACKUP_DIR/subboost-$stamp.dump"
   BACKUP_ENV_OUT="$BACKUP_DIR/subboost-$stamp.env"
   create_verified_dump "$BACKUP_DB_OUT"
-  sudo_do install -m 600 "$ENV_FILE" "$BACKUP_ENV_OUT"
+  # Export data credentials only; deployment releases belong to the target host.
+  local backup_env="$TMP_DIR/backup-data.env"
+  prepare_private_directory "$TMP_DIR"
+  (umask 077; read_env_file | awk -F= '$1 ~ /^(POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|DATABASE_URL|ENCRYPTION_KEY|JWT_SECRET|CRON_SECRET|APP_URL|SUBBOOST_PORT)$/ { print }' > "$backup_env")
+  sudo_do install -m 600 "$backup_env" "$BACKUP_ENV_OUT"
 }
 
 prune_backups() {
