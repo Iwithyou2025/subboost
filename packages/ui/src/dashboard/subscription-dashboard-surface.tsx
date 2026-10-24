@@ -534,13 +534,20 @@ function SubscriptionRow({
               创建于 {formatDashboardDate(sub.createdAt)}
             </span>
             <span className="flex items-center gap-1">
+              来源更新：
               <span
                 role="img"
                 aria-label={updateIndicator.label}
                 title={updateIndicator.label}
                 className={`inline-block h-3 w-3 shrink-0 rounded-full ${updateIndicator.color}`}
               />
-              下次更新时间：{sub.autoUpdateInterval ? formatDashboardDate(getNextUpdateAt(sub)) : "—"}
+            </span>
+            <span className="flex items-center gap-1">
+              {sub.autoUpdateInterval
+                ? `下次更新时间：${formatDashboardDate(getNextUpdateAt(sub))}`
+                : sub.autoUpdateState.disabledAt
+                  ? "自动更新已关闭"
+                  : "自动更新未开启"}
             </span>
             {sub.autoUpdateInterval && (
               <span className="flex items-center gap-1">

@@ -361,6 +361,7 @@ async function persistRefreshSuccess(params: {
   snapshot: RefreshNodeSnapshotResult;
   config: Record<string, unknown>;
   cachedAt: Date;
+  restoredAutoUpdateInterval: number | null;
 }): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     const updated = await tx.subscription.updateMany({
@@ -369,6 +370,9 @@ async function persistRefreshSuccess(params: {
         encryptedNodes: encryptJson(params.snapshot.nodes),
         encryptedConfig: encryptJson(withSourceUpdateResults({ ...params.config, sources: params.snapshot.savedSources }, params.snapshot)),
         encryptedSubscriptionInfo: encryptJson(params.snapshot.subscriptionInfo),
+        ...(params.restoredAutoUpdateInterval !== null
+          ? { autoUpdateInterval: params.restoredAutoUpdateInterval }
+          : {}),
         lastUpdatedAt: params.cachedAt,
         cacheExpiresAt: buildSubscriptionCacheExpiry(params.cachedAt),
         updatedAt: params.cachedAt,
@@ -424,6 +428,12 @@ export async function refreshSubscription(ownerId: string, id: string) {
     };
   }
 
+  const previousInterval = row.autoUpdateState?.disabledPreviousInterval;
+  const restoredAutoUpdateInterval =
+    row.autoUpdateInterval === null && row.autoUpdateState?.disabledAt &&
+    typeof previousInterval === "number" && Number.isInteger(previousInterval) && previousInterval > 0
+      ? previousInterval
+      : null;
   const cachedAt = new Date();
   const persisted = await persistRefreshSuccess({
     subscriptionId: row.id,
@@ -431,6 +441,7 @@ export async function refreshSubscription(ownerId: string, id: string) {
     snapshot,
     config: secrets.config,
     cachedAt,
+    restoredAutoUpdateInterval,
   });
   if (!persisted) {
     return {
