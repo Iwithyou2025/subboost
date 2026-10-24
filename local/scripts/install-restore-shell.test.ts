@@ -189,7 +189,7 @@ ENV
     expect(result.stdout).toContain("set SUBBOOST_MIGRATION_ADMIN_PASSWORD");
   });
 
-  it("installs a full backup in migration order and preserves its environment", () => {
+  it.each(["legacy", "data-only"])("installs a %s backup with the current release and preserves data credentials", (backupKind) => {
     const result = runBash(String.raw`
       set -Eeuo pipefail
       work="$(mktemp -d)"
@@ -207,10 +207,11 @@ services:
   db: { image: postgres }
   cron: { image: cron }
 COMPOSE
-      cat > "$bin_dir/subboost" <<'MANAGER'
+      cat > "$source_dir/latest-manager" <<'MANAGER'
 #!/usr/bin/env bash
 printf 'manager:%s\n' "$*" >> "$TEST_LOG"
 MANAGER
+      printf '#!/usr/bin/env bash\nexit 99\n' > "$bin_dir/subboost"
       chmod +x "$bin_dir/subboost"
       cat > "$source_dir/database.dump" <<'DUMP'
 valid-database-dump
@@ -232,11 +233,17 @@ LOCAL_SETUP_TOKEN=source-setup-token
 APP_URL=https://migrated.example:32123
 SUBBOOST_PORT=32123
 ENV
+      if [ BACKUP_KIND = data-only ]; then
+        sed -i '/^SUBBOOST_\(IMAGE\|CANDIDATE_IMAGE\|RELEASE_URL\|COMPOSE_URL\|MANAGER_URL\)=/d' "$source_dir/subboost.env"
+      else
+        # These old tooling URLs must never be fetched during restore.
+        sed -i 's|^SUBBOOST_COMPOSE_URL=.*|SUBBOOST_COMPOSE_URL=file:///missing/old-compose.yml|; s|^SUBBOOST_MANAGER_URL=.*|SUBBOOST_MANAGER_URL=file:///missing/old-manager|' "$source_dir/subboost.env"
+      fi
       cat > "$source_dir/manifest.json" <<'JSON'
 {"formatVersion":1,"databaseFile":"database.dump","environmentFile":"subboost.env"}
 JSON
       cat > "$source_dir/release.json" <<JSON
-{"version":"1.1.0","image":"ignored-image","composeUrl":"file://$source_dir/docker-compose.yml","managerUrl":"file://$bin_dir/subboost"}
+{"version":"9.0.0","image":"ghcr.io/example/subboost:9.0.0","composeUrl":"file://$source_dir/docker-compose.yml","managerUrl":"file://$source_dir/latest-manager"}
 JSON
       python3 - "$source_dir" "$work/backup.zip" <<'PY'
 import pathlib
@@ -317,7 +324,12 @@ TRACE
       grep -Fq 'POSTGRES_PASSWORD=source_database_password' "$install_dir/.env"
       grep -Fq 'JWT_SECRET=source-jwt-secret' "$install_dir/.env"
       grep -Fq 'CRON_SECRET=source-cron-secret' "$install_dir/.env"
-    `);
+      grep -Fxq 'SUBBOOST_IMAGE=ghcr.io/example/subboost:9.0.0' "$install_dir/.env"
+      grep -Fxq 'SUBBOOST_CANDIDATE_IMAGE=ghcr.io/example/subboost:9.0.0' "$install_dir/.env"
+      grep -Fxq "SUBBOOST_MANAGER_URL=file://$source_dir/latest-manager" "$install_dir/.env"
+      grep -Fxq "SUBBOOST_RELEASE_URL=file://$source_dir/release.json" "$install_dir/.env"
+      ! grep -Fq '1.1.0' "$install_dir/.env"
+    `.replace("BACKUP_KIND", backupKind));
 
     expect(result.status, result.stderr || result.stdout).toBe(0);
     expect(result.stdout).toContain("完整迁移已完成");

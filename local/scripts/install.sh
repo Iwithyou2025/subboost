@@ -308,7 +308,6 @@ validate_restore_environment() {
   local env_file="$1"
   local line key value expected_database_url
   local -a required_keys=(
-    SUBBOOST_IMAGE
     POSTGRES_DB
     POSTGRES_USER
     POSTGRES_PASSWORD
@@ -1437,22 +1436,11 @@ main() {
   manifest_manager="$(json_get managerUrl "$RELEASE_FILE" || true)"
   manifest_version="$(json_get version "$RELEASE_FILE" || true)"
 
-  local image compose_url manager_url backup_compose_url="" backup_manager_url=""
-  if [ -n "$RESTORE_ARCHIVE" ]; then
-    image="$(file_env_value "$RESTORE_ENV" SUBBOOST_IMAGE)"
-    backup_compose_url="$(file_env_value "$RESTORE_ENV" SUBBOOST_COMPOSE_URL || true)"
-    backup_manager_url="$(file_env_value "$RESTORE_ENV" SUBBOOST_MANAGER_URL || true)"
-  else
-    image="${SUBBOOST_IMAGE:-${manifest_image:-$DEFAULT_IMAGE}}"
-  fi
-  compose_url="${SUBBOOST_COMPOSE_URL:-${backup_compose_url:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_compose:-$DEFAULT_COMPOSE_URL}")}}"
-  manager_url="${SUBBOOST_MANAGER_URL:-${backup_manager_url:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_manager:-$DEFAULT_MANAGER_URL}")}}"
-  if [ "$INSTALL_MODE" = server ]; then
-    # Old backups may pin pre-HTTPS managers. Keep their application image and
-    # encryption key, but use this release's HTTPS-aware deployment tooling.
-    compose_url="${SUBBOOST_COMPOSE_URL:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_compose:-$DEFAULT_COMPOSE_URL}")}"
-    manager_url="${SUBBOOST_MANAGER_URL:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_manager:-$DEFAULT_MANAGER_URL}")}"
-  fi
+  # Backup data must never select an old application or deployment tool release.
+  local image compose_url manager_url
+  image="${SUBBOOST_IMAGE:-${manifest_image:-$DEFAULT_IMAGE}}"
+  compose_url="${SUBBOOST_COMPOSE_URL:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_compose:-$DEFAULT_COMPOSE_URL}")}"
+  manager_url="${SUBBOOST_MANAGER_URL:-$(resolve_url "$SUBBOOST_RELEASE_URL" "${manifest_manager:-$DEFAULT_MANAGER_URL}")}"
   [ -n "$image" ] && [ -n "$compose_url" ] && [ -n "$manager_url" ] || die "Release metadata is missing image, composeUrl, or managerUrl."
 
   if [ -n "$RESTORE_ARCHIVE" ]; then
@@ -1486,21 +1474,18 @@ main() {
   local volumes_before="$TMP_DIR/volumes.before"
   umask 077
   download_to_temp "$compose_url" "$COMPOSE_FILE"
-  if [ -x "$SUBBOOST_BIN" ] && [ "$INSTALL_MODE" != server ]; then
-    say "Existing SubBoost manager found; reusing it."
-    cp "$SUBBOOST_BIN" "$candidate_manager"
-  else
-    download_to_temp "$manager_url" "$candidate_manager"
-  fi
+  download_to_temp "$manager_url" "$candidate_manager"
   [ -s "$COMPOSE_FILE" ] || die "Candidate Compose file is empty."
   [ -s "$candidate_manager" ] && bash -n "$candidate_manager" || die "Candidate manager is invalid."
 
   if [ -n "$RESTORE_ARCHIVE" ]; then
     install -m 600 "$RESTORE_ENV" "$ENV_FILE"
-    ensure_env_value SUBBOOST_CANDIDATE_IMAGE "$image"
-    ensure_env_value SUBBOOST_RELEASE_URL "$SUBBOOST_UPDATE_RELEASE_URL"
-    ensure_env_value SUBBOOST_COMPOSE_URL "$compose_url"
-    ensure_env_value SUBBOOST_MANAGER_URL "$manager_url"
+    # Overwrite legacy backup release settings, including the active image.
+    set_env_value SUBBOOST_IMAGE "$image"
+    set_env_value SUBBOOST_CANDIDATE_IMAGE "$image"
+    set_env_value SUBBOOST_RELEASE_URL "$SUBBOOST_UPDATE_RELEASE_URL"
+    set_env_value SUBBOOST_COMPOSE_URL "$compose_url"
+    set_env_value SUBBOOST_MANAGER_URL "$manager_url"
     if [ "$INSTALL_MODE" = local ]; then
       configure_restored_local_access || die "本地访问地址配置未完成，尚未创建容器。"
     fi
