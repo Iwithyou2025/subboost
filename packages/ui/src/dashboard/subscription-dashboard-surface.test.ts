@@ -380,6 +380,26 @@ describe("SubscriptionDashboardSurface", () => {
     expect(setters[0]).toHaveBeenCalledWith([updated]);
   });
 
+  it("shows an explicit unscheduled state even when the last source refresh succeeded", () => {
+    const html = renderSurface(createAdapter(), { 0: [{
+      ...subscription,
+      autoUpdateInterval: null,
+      sourceUpdateSummary: { total: 2, succeeded: 2, failed: 0 },
+    }], 1: false }).html;
+    expect(html).toContain("来源更新：");
+    expect(html).toContain('aria-label="全部更新成功"');
+    expect(html).toContain("自动更新未开启");
+    expect(html).not.toContain("下次更新时间：");
+    expect(html).not.toContain("刷新缓存");
+  });
+
+  it("distinguishes automatic disablement from a schedule that was never enabled", () => {
+    const html = renderSurface(createAdapter(), { 0: [disabledSubscription], 1: false }).html;
+    expect(html).toContain("自动更新已关闭");
+    expect(html).not.toContain("自动更新未开启");
+    expect(html).not.toContain("下次更新时间：");
+  });
+
   it("shows the next update based on the most recent refresh or failed attempt", () => {
     const html = renderSurface(createAdapter(), { 0: [{
       ...subscription,
