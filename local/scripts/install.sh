@@ -144,8 +144,9 @@ prompt() {
   fi
   if { exec 3<>/dev/tty; } 2>/dev/null; then
     if [ -t 3 ] && printf '%s' "$message" >&3 2>/dev/null; then
-      IFS= read -e -r -u 3 answer >&3 2>/dev/null || answer=""
-      printf '\n' >&3 2>/dev/null || true
+      # Readline writes typed characters to stderr, including inside $(prompt ...).
+      # Keep editing/echo on the terminal and return only the answer on stdout.
+      IFS= read -e -r -u 3 answer >&3 2>&3 || { answer=""; printf '\n' >&3; }
     fi
     exec 3>&-
   fi
