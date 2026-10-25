@@ -54,8 +54,11 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
             receive()
     def ready(marker, start=0):
         wait_for(lambda: marker.encode() in output[start:], 'prompt missing: '+marker)
-        # Wait until readline (or the secret reader) owns input, avoiding kernel echo.
-        wait_for(lambda: not termios.tcgetattr(slave)[3] & termios.ICANON, 'reader not ready')
+        # PEM uses canonical terminal input so pasted multiline blocks are read line by line.
+        if mode=='pem':
+            wait_for(lambda: bool(termios.tcgetattr(slave)[3] & termios.ICANON), 'canonical reader not ready')
+        else:
+            wait_for(lambda: not termios.tcgetattr(slave)[3] & termios.ICANON, 'reader not ready')
     def type_visible(payload, visible):
         start=len(output)
         os.write(master,payload)
