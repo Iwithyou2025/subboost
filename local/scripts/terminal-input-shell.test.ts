@@ -106,6 +106,10 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
             expected=b'-----BEGIN CERTIFICATE-----\nabcdef\n-----END CERTIFICATE-----\n'
         elif mode in ('eof','interrupt'):
             ready('READY: ')
+            if mode=='interrupt':
+                # Cancel an active read, after readline has processed input and
+                # installed its signal handlers (not midway through tty setup).
+                type_visible(b'cancel-me',b'cancel-me')
             os.write(master,b'\x04' if mode=='eof' else b'\x03')
             expected=b'1'
         else:
