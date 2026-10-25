@@ -1174,8 +1174,9 @@ select_install_mode() {
 }
 
 # Read visible PEM input from /dev/tty, never pipeline stdin (curl | bash).
-# Each PEM block is validated as soon as its END line is entered; no extra blank
-# line is required. Pasted certificate chains should use the file-path option.
+# Use the terminal's canonical line editor for PEM so multiline paste is read
+# line-by-line (rather than swallowed as one Readline buffer). Input stays visible,
+# Backspace edits only the current line, and END triggers validation immediately.
 read_pem_from_tty() {
   local output="$1" description="$2"
   [ "$SUBBOOST_ASSUME_YES" != 1 ] || return 1
@@ -1192,7 +1193,7 @@ read_pem_from_tty() {
 
       while true; do
         line=""
-        IFS= read -e -r -u 3 -p 'PEM> ' line 2>&3 || exit 1
+        IFS= read -r -u 3 -p 'PEM> ' line 2>&3 || exit 1
         line="${line%$'\r'}"
         [ -n "$line" ] || continue
 
