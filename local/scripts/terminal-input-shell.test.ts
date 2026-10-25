@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as work:
     env=dict(os.environ, SUBBOOST_SCRIPT_SOURCE_ONLY='1', SUBBOOST_ASSUME_YES='0', TERM='xterm', INPUTRC='/dev/null', LC_ALL='C.UTF-8')
     if mode=='secret':
         command='value="$(read_secret_from_tty "READY: ")"; printf "%s" "$value" > "$1"; value="$(prompt "AFTER: " "")"; printf "|%s" "$value" >> "$1"'
-    elif mode=='pem': command='read_pem_from_tty "$1" "READY"'
+    elif mode=='pem': command='read_pem_from_tty "$1" "certificate"'
     elif mode in ('local', 'server-auto', 'server-import'):
         command='''
 INSTALL_MODE= HTTPS_DOMAIN= TLS_MODE= imported=no
@@ -129,7 +129,7 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
         else:
             assert p.returncode==0,output
             assert pathlib.Path(work,'out').read_bytes()==expected+b'|finished',pathlib.Path(work,'out').read_bytes()
-            if mode=='secret': assert b'abc' not in output and b'def' not in output,output
+            if mode=='secret': assert b'def' in output and b'abcX' not in output,output
     finally:
         if p.poll() is None: os.killpg(p.pid,signal.SIGKILL); p.wait()
         os.close(master); os.close(slave)
