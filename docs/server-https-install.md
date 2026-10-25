@@ -47,6 +47,10 @@ sudo env SUBBOOST_INSTALL_MODE=server SUBBOOST_DOMAIN=sub.example.com \
 
 应用更新保留 HTTPS；Caddy 证书数据保存在独立命名卷。`subboost restart` 会重启 Caddy 以加载替换后的导入证书。
 
+网页导出、`subboost backup` 和 `subboost backup --zip` 只导出数据库及恢复必需的数据凭据，不包含应用镜像、候选镜像、发布源、Compose 或管理脚本版本地址。备份格式标识 `formatVersion` 保留，它不决定应用版本。
+
+全新安装和 `install.sh --restore` 默认从最新稳定发行版选择镜像、Compose 和管理脚本；旧备份内的版本配置不会导致降级。显式设置安装环境变量仍可用于自定义发行源。已安装环境的网页/命令行恢复保留目标机器当前版本，不从备份选择版本。更新失败回滚和恢复前的内部安全快照保留本机部署信息，以便准确回退。
+
 现有 ZIP 数据备份格式保持兼容，不包含 TLS 私钥或 Caddy 自动证书卷。迁移时重新选择服务器模式并自动申请或重新导入证书；数据 ENCRYPTION_KEY 保持原值。请另行安全保管导入证书和私钥。
 
 卸载通过同一 Compose 项目删除本项目 Caddy、网络、证书卷和数据；不卸载系统 Docker/Nginx，不删除共享 Caddy 镜像。
