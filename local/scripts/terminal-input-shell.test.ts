@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory() as work:
     original_state=termios.tcgetattr(slave)
     def terminal():
         os.setsid()
-        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        fcntl.ioctl(1, termios.TIOCSCTTY, 0)
     env=dict(os.environ, SUBBOOST_SCRIPT_SOURCE_ONLY='1', SUBBOOST_ASSUME_YES='0', TERM='xterm', INPUTRC='/dev/null', LC_ALL='C.UTF-8')
     if mode=='secret':
         command='value="$(read_secret_from_tty "READY: ")"; printf "%s" "$value" > "$1"; value="$(prompt "AFTER: " "")"; printf "|%s" "$value" >> "$1"'
@@ -35,8 +35,10 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
     else: command='value="$(prompt "READY: " "1")"; printf "%s" "$value" > "$1"'
     runner=pathlib.Path(work, 'runner.sh')
     runner.write_text('source local/scripts/install.sh\n'+command+'\nprintf "|finished" >> "$1"\n')
-    # Pipeline mode gives bash its script on stdin, just like curl | sudo bash -s.
-    args=['bash',str(runner),work+'/out'] if transport=='direct' else ['bash','-c','cat "$1" | bash -s -- "$2"','bash',str(runner),work+'/out']
+    # Match a user's interactive shell: the script/pipeline owns a foreground
+    # process group, so Ctrl+C reaches it while the launcher waits separately.
+    launch='bash "$1" "$2"' if transport=='direct' else 'cat "$1" | bash -s -- "$2"'
+    args=['bash','--noprofile','--norc','-i','-c',launch,'bash',str(runner),work+'/out']
     p=subprocess.Popen(args, stdin=slave,stdout=slave,stderr=slave,env=env,preexec_fn=terminal)
     output=b''
     def receive(timeout=0.05):
@@ -115,9 +117,12 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
         else:
             payload,expected={'prompt':(edited,b'abcdef'), 'number':(b'2',b'2'), 'domain':(b'sub.example.test',b'sub.example.test'), 'default':(b'',b'1')}[mode]
             answer('READY: ',payload,b'def' if mode=='prompt' else payload)
-        p.wait(timeout=5)
+        try: p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            receive(0)
+            raise AssertionError(('terminal process did not exit',p.args,output))
         while select.select([master],[],[],0.05)[0]: receive(0)
-        assert termios.tcgetattr(slave)==original_state,'terminal settings were not restored'
+        wait_for(lambda: termios.tcgetattr(slave)==original_state, 'terminal settings were not restored')
         if mode=='interrupt':
             assert p.returncode!=0,output
             assert not pathlib.Path(work,'out').exists(),'cancelled input was accepted'
