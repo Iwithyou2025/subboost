@@ -210,7 +210,7 @@ if https_start_and_check; then exit 1; fi
     expect(r.stderr).toContain("Cloudflare 522");
   });
   it("accepts a valid PEM private key from a real TTY immediately after the END line", () => {
-    const r = run(\`
+    const r = run(`
 python3 - "$PWD/local/scripts/install.sh" "$work/pasted" <<'PYTTY'
 import fcntl, os, pty, select, subprocess, sys, termios, time
 key_source=sys.argv[2]+'.source'
@@ -244,7 +244,7 @@ finally:
     if p.poll() is None: p.kill()
     os.close(master)
 PYTTY
-\`);
+`);
     expect(r.status, r.stderr).toBe(0);
   });
 
