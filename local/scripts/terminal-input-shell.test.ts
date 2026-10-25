@@ -126,7 +126,7 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
         else:
             assert p.returncode==0,output
             assert pathlib.Path(work,'out').read_bytes()==expected+b'|finished',pathlib.Path(work,'out').read_bytes()
-            if mode=='secret': assert b'def' in output and b'abcX' not in output,output
+            if mode=='secret': assert b'def' in output and b'READY: ' in output and b'AFTER: ' in output,output
     finally:
         if p.poll() is None: os.killpg(p.pid,signal.SIGKILL); p.wait()
         os.close(master); os.close(slave)
