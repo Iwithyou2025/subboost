@@ -239,7 +239,7 @@ try:
         except OSError: break
     assert p.returncode==0, output
     assert open(sys.argv[2],'rb').read()==payload
-    assert b'PEM 格式校验通过' in output, output
+    assert 'PEM 格式校验通过'.encode() in output, output
 finally:
     if p.poll() is None: p.kill()
     os.close(master)
