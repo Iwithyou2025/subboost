@@ -574,6 +574,49 @@ describe("local subscription service", () => {
     });
   });
 
+  it.each(["订阅源连续拉取失败", "节点数连续超过配额"])("restores the saved interval after manual recovery from %s", async (disabledReason) => {
+    const original = row();
+    mocks.prisma.subscription.findFirst.mockResolvedValueOnce(row({
+      autoUpdateInterval: null,
+      autoUpdateState: {
+        ...original.autoUpdateState!,
+        disabledAt: new Date("2026-06-01T06:00:00Z"),
+        disabledReason,
+        disabledPreviousInterval: 7200,
+      },
+    }));
+    await expect(refreshSubscription("owner-1", "sub-1")).resolves.toMatchObject({ ok: true });
+    expect(mocks.prisma.subscription.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "sub-1", updatedAt: original.updatedAt },
+      data: expect.objectContaining({ autoUpdateInterval: 7200, lastUpdatedAt: expect.any(Date) }),
+    }));
+    expect(mocks.prisma.subscriptionAutoUpdateState.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ disabledAt: null, disabledPreviousInterval: null, lastAttemptedAt: null }),
+    }));
+  });
+
+  it.each([null, 0, -1, Number.NaN])("does not invent a schedule when the saved interval is %s", async (disabledPreviousInterval) => {
+    const original = row();
+    mocks.prisma.subscription.findFirst.mockResolvedValueOnce(row({
+      autoUpdateInterval: null,
+      autoUpdateState: { ...original.autoUpdateState!, disabledPreviousInterval },
+    }));
+    await refreshSubscription("owner-1", "sub-1");
+    expect(mocks.prisma.subscription.updateMany.mock.calls.at(-1)?.[0].data).not.toHaveProperty("autoUpdateInterval");
+  });
+
+  it("keeps the disabled interval and recovery record when manual refresh fails", async () => {
+    const original = row();
+    mocks.prisma.subscription.findFirst.mockResolvedValueOnce(row({
+      autoUpdateInterval: null,
+      autoUpdateState: { ...original.autoUpdateState!, disabledAt: new Date(), disabledPreviousInterval: 7200 },
+    }));
+    mocks.prepareRefreshCacheResult.mockReturnValueOnce({ ok: false, reason: "too_many_nodes" });
+    await expect(refreshSubscription("owner-1", "sub-1")).resolves.toMatchObject({ ok: false });
+    expect(mocks.prisma.subscription.updateMany.mock.calls.at(-1)?.[0].data).not.toHaveProperty("autoUpdateInterval");
+    expect(mocks.prisma.subscriptionAutoUpdateState.upsert.mock.calls.at(-1)?.[0].update).toEqual({ lastAttemptedAt: expect.any(Date) });
+  });
+
   it("refreshes subscriptions and persists successful snapshots", async () => {
     expect(buildSubscriptionCacheExpiry(new Date("2026-06-01T00:00:00.000Z")).toISOString()).toBe(
       "2026-06-01T01:00:00.000Z"

@@ -380,6 +380,43 @@ describe("SubscriptionDashboardSurface", () => {
     expect(setters[0]).toHaveBeenCalledWith([updated]);
   });
 
+  it("shows an explicit unscheduled state even when the last source refresh succeeded", () => {
+    const html = renderSurface(createAdapter(), { 0: [{
+      ...subscription,
+      autoUpdateInterval: null,
+      sourceUpdateSummary: { total: 2, succeeded: 2, failed: 0 },
+    }], 1: false }).html;
+    expect(html).toContain("来源更新：");
+    expect(html).toContain('aria-label="全部更新成功"');
+    expect(html).toContain("自动更新未开启");
+    expect(html).not.toContain("下次更新时间：");
+    expect(html).not.toContain("刷新缓存");
+  });
+
+  it("distinguishes automatic disablement from a schedule that was never enabled", () => {
+    const html = renderSurface(createAdapter(), { 0: [disabledSubscription], 1: false }).html;
+    expect(html).toContain("自动更新已关闭");
+    expect(html).not.toContain("自动更新未开启");
+    expect(html).not.toContain("下次更新时间：");
+  });
+
+  it("reloads the recovered interval after manual refresh and displays its next update time", async () => {
+    const recovered = {
+      ...disabledSubscription,
+      autoUpdateInterval: 7200,
+      lastUpdatedAt: "2026-01-04T08:00:00.000Z",
+      autoUpdateState: { ...subscription.autoUpdateState },
+    };
+    const adapter = createAdapter({ fetchSubscriptions: vi.fn(async () => [recovered]) });
+    const { setters } = renderSurface(adapter, { 0: [disabledSubscription], 1: false });
+    await mocks.captures.buttons.find((props: any) => props.title === "重新生成配置并刷新缓存").onClick();
+    await flushPromises();
+    expect(setters[0]).toHaveBeenCalledWith([recovered]);
+    const html = renderSurface(adapter, { 0: [recovered], 1: false }).html;
+    expect(html).toContain("下次更新时间：date:2026-01-04T10:00:00.000Z");
+    expect(html).not.toContain("自动更新已关闭");
+  });
+
   it("shows the next update based on the most recent refresh or failed attempt", () => {
     const html = renderSurface(createAdapter(), { 0: [{
       ...subscription,
