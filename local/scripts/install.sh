@@ -143,10 +143,14 @@ prompt() {
     return 0
   fi
   if { exec 3<>/dev/tty; } 2>/dev/null; then
-    if [ -t 3 ] && printf '%s' "$message" >&3 2>/dev/null; then
-      # Readline writes typed characters to stderr, including inside $(prompt ...).
-      # Keep editing/echo on the terminal and return only the answer on stdout.
-      IFS= read -e -r -u 3 answer >&3 2>&3 || { answer=""; printf '\n' >&3; }
+    if [ -t 3 ]; then
+      # Let Readline own the complete prompt so Backspace edits only the input,
+      # never the prompt text. stderr is directed to the controlling terminal
+      # because Readline uses it for both the prompt and visible character echo.
+      IFS= read -e -r -u 3 -p "$message" answer 2>&3 || {
+        answer=""
+        printf '\n' >&3
+      }
     fi
     exec 3>&-
   fi
@@ -385,15 +389,30 @@ read_secret_from_tty() (
       stty -echo -icanon min 1 time 0 <&3 || return 1
       available=1
       printf '%s' "$message" >&3
-      # Read characters without echo; support both terminal Backspace codes.
+      # Echo every character explicitly while retaining consistent BS/DEL
+      # editing across SSH clients. Password input is intentionally visible
+      # per the installer's all-inputs-visible interaction requirement.
       local character
       while true; do
         if ! IFS= read -r -s -n 1 -u 3 character; then available=0; break; fi
         case "$character" in
           '') break ;;
-          $'\177'|$'\010') answer="${answer%?}" ;;
-          $'\025') answer="" ;;
-          *) answer+="$character" ;;
+          $'\177'|$'\010')
+            if [ -n "$answer" ]; then
+              answer="${answer%?}"
+              printf '\b \b' >&3
+            fi
+            ;;
+          $'\025')
+            while [ -n "$answer" ]; do
+              answer="${answer%?}"
+              printf '\b \b' >&3
+            done
+            ;;
+          *)
+            answer+="$character"
+            printf '%s' "$character" >&3
+            ;;
         esac
       done
       printf '\n' >&3
@@ -1154,29 +1173,87 @@ select_install_mode() {
   say "公网环境需要云安全组及防火墙允许 TCP 443；安装结束会验证 HTTPS 连通性。"
 }
 
-# Read echoed PEM input from /dev/tty, never pipeline stdin (curl | bash).
-# A blank line after a complete PEM block submits the certificate chain/key.
+# Read visible PEM input from /dev/tty, never pipeline stdin (curl | bash).
+# Each PEM block is validated as soon as its END line is entered; no extra blank
+# line is required. Pasted certificate chains should use the file-path option.
 read_pem_from_tty() {
-  local output="$1" description="$2" line="" bytes=0
+  local output="$1" description="$2"
   [ "$SUBBOOST_ASSUME_YES" != 1 ] || return 1
   (
     exec 3<>/dev/tty || exit 1
     [ -t 3 ] || exit 1
-    printf '\n请粘贴完整%s（含 BEGIN/END 标记），粘贴后再按一次回车提交（空行结束），输入会回显：\n' "$description" >&3
     umask 077
-    : > "$output"
-    while IFS= read -e -r -u 3 line >&3; do
-      line="${line%$'\r'}"
-      if [ -z "$line" ]; then
-        [ "$bytes" -gt 0 ] || continue
-        grep -q '^-----END .*-----$' "$output" || { printf 'PEM 不完整，请继续粘贴。\n' >&3; continue; }
-        printf '接收完成。\n' >&3; exit 0
-      fi
-      bytes=$((bytes + ${#line} + 1))
-      [ "$bytes" -le 131072 ] || { printf '\n证书输入过长。\n' >&3; exit 1; }
-      printf '%s\n' "$line" >> "$output"
+
+    while true; do
+      local line="" bytes=0 begin_label="" end_label=""
+      : > "$output"
+      chmod 600 "$output" || exit 1
+      printf '\n请粘贴完整%s；每行按回车，输入 END 标记后立即校验并提交。输入会回显；多段证书链请使用文件路径方式：\n' "$description" >&3
+
+      while true; do
+        line=""
+        IFS= read -e -r -u 3 -p 'PEM> ' line 2>&3 || exit 1
+        line="${line%$'\r'}"
+        [ -n "$line" ] || continue
+
+        bytes=$((bytes + ${#line} + 1))
+        if [ "$bytes" -gt 131072 ]; then
+          printf 'PEM 输入超过 128 KiB，请重新粘贴。\n' >&3
+          break
+        fi
+
+        if [[ "$line" =~ ^-----BEGIN\ ([A-Z0-9\ ]+)-----$ ]]; then
+          if [ -n "$begin_label" ]; then
+            printf 'PEM 中出现重复的 BEGIN 标记，请重新粘贴。\n' >&3
+            break
+          fi
+          begin_label="${BASH_REMATCH[1]}"
+        fi
+
+        printf '%s\n' "$line" >> "$output"
+
+        if [[ "$line" =~ ^-----END\ ([A-Z0-9\ ]+)-----$ ]]; then
+          end_label="${BASH_REMATCH[1]}"
+          if [ -z "$begin_label" ] || [ "$begin_label" != "$end_label" ]; then
+            printf 'PEM 的 BEGIN/END 标记不匹配，请重新粘贴。\n' >&3
+            break
+          fi
+
+          case "$description" in
+            *证书*)
+              if [ "$begin_label" != "CERTIFICATE" ]; then
+                printf '格式错误：证书必须使用 BEGIN/END CERTIFICATE 标记，请重新粘贴。\n' >&3
+                break
+              fi
+              if ! openssl x509 -in "$output" -noout >/dev/null 2>&1; then
+                printf 'PEM 格式校验失败：证书内容无法解析，请重新粘贴完整证书。\n' >&3
+                break
+              fi
+              ;;
+            *私钥*)
+              if [[ "$begin_label" != *"PRIVATE KEY" ]]; then
+                printf '格式错误：需要 PEM 私钥标记，请重新粘贴。\n' >&3
+                break
+              fi
+              if ! openssl pkey -in "$output" -passin pass: -noout >/dev/null 2>&1; then
+                printf 'PEM 格式校验失败：私钥内容无法解析或已加密，请重新粘贴未加密私钥。\n' >&3
+                break
+              fi
+              ;;
+            *)
+              if ! openssl x509 -in "$output" -noout >/dev/null 2>&1 &&
+                 ! openssl pkey -in "$output" -passin pass: -noout >/dev/null 2>&1; then
+                printf 'PEM 格式校验失败，请重新粘贴。\n' >&3
+                break
+              fi
+              ;;
+          esac
+
+          printf 'PEM 格式校验通过，接收完成。\n' >&3
+          exit 0
+        fi
+      done
     done
-    exit 1
   )
 }
 
