@@ -209,33 +209,37 @@ if https_start_and_check; then exit 1; fi
     expect(r.status, r.stderr).toBe(0);
     expect(r.stderr).toContain("Cloudflare 522");
   });
-  it("accepts multiline PEM from a real TTY with echo and a blank-line terminator", () => {
+  it("accepts a valid PEM private key from a real TTY immediately after the END line", () => {
     const r = run(`
 python3 - "$PWD/local/scripts/install.sh" "$work/pasted" <<'PYTTY'
 import fcntl, os, pty, select, subprocess, sys, termios, time
+key_source=sys.argv[2]+'.source'
+subprocess.run(['openssl','genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:2048','-out',key_source],
+               check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+payload=open(key_source,'rb').read()
 master, slave = pty.openpty()
 def terminal():
     os.setsid()
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 env = dict(os.environ, SUBBOOST_ASSUME_YES='0')
-p = subprocess.Popen(['bash', '-c', 'source "$1"; read_pem_from_tty "$2" private-key', 'bash', sys.argv[1], sys.argv[2]],
+p = subprocess.Popen(['bash', '-c', 'source "$1"; read_pem_from_tty "$2" "私钥"', 'bash', sys.argv[1], sys.argv[2]],
                      stdin=slave, stdout=slave, stderr=slave, env=env, preexec_fn=terminal)
 os.close(slave)
 output=b''
 deadline=time.monotonic()+10
 try:
-    while b'private-key' not in output and time.monotonic()<deadline:
+    while '请粘贴完整私钥'.encode() not in output and time.monotonic()<deadline:
         if select.select([master],[],[],0.1)[0]: output+=os.read(master,4096)
-    # Readline renders visible input itself; kernel ECHO may be disabled.
-    payload=b'-----BEGIN PRIVATE KEY-----\\nsecret-test-payload\\n-----END PRIVATE KEY-----\\n'
-    os.write(master,payload+b'\\n')
+    assert '请粘贴完整私钥'.encode() in output, output
+    # The real PEM includes its line endings. No extra blank line is sent.
+    os.write(master,payload)
     p.wait(timeout=5)
     while select.select([master],[],[],0.1)[0]:
         try: output+=os.read(master,4096)
         except OSError: break
     assert p.returncode==0, output
     assert open(sys.argv[2],'rb').read()==payload
-    assert b'secret-test-payload' in output, output
+    assert 'PEM 格式校验通过'.encode() in output, output
 finally:
     if p.poll() is None: p.kill()
     os.close(master)

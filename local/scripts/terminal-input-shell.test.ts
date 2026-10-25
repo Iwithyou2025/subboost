@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as work:
     env=dict(os.environ, SUBBOOST_SCRIPT_SOURCE_ONLY='1', SUBBOOST_ASSUME_YES='0', TERM='xterm', INPUTRC='/dev/null', LC_ALL='C.UTF-8')
     if mode=='secret':
         command='value="$(read_secret_from_tty "READY: ")"; printf "%s" "$value" > "$1"; value="$(prompt "AFTER: " "")"; printf "|%s" "$value" >> "$1"'
-    elif mode=='pem': command='read_pem_from_tty "$1" "READY"'
+    elif mode=='pem': command='read_pem_from_tty "$1" "certificate"'
     elif mode in ('local', 'server-auto', 'server-import'):
         command='''
 INSTALL_MODE= HTTPS_DOMAIN= TLS_MODE= imported=no
@@ -54,8 +54,11 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
             receive()
     def ready(marker, start=0):
         wait_for(lambda: marker.encode() in output[start:], 'prompt missing: '+marker)
-        # Wait until readline (or the secret reader) owns input, avoiding kernel echo.
-        wait_for(lambda: not termios.tcgetattr(slave)[3] & termios.ICANON, 'reader not ready')
+        # PEM uses canonical terminal input so pasted multiline blocks are read line by line.
+        if mode=='pem':
+            wait_for(lambda: bool(termios.tcgetattr(slave)[3] & termios.ICANON), 'canonical reader not ready')
+        else:
+            wait_for(lambda: not termios.tcgetattr(slave)[3] & termios.ICANON, 'reader not ready')
     def type_visible(payload, visible):
         start=len(output)
         os.write(master,payload)
@@ -90,22 +93,19 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
                 expected=b'server|sub.example.test|import|yes'
         elif mode=='secret':
             ready('READY: ')
-            os.write(master,edited)
-            receive(0.1)
-            assert b'abc' not in output and b'def' not in output,output
+            type_visible(edited,b'def')
             checkpoint=len(output)
             os.write(master,b'\n')
             answer('AFTER: ',b'2',b'2',checkpoint)
             expected=b'abcdef|2'
         elif mode=='pem':
-            ready('READY')
-            type_visible(b'-----BEGIN CERTIFICATE-----',b'-----BEGIN CERTIFICATE-----')
-            os.write(master,b'\n')
-            type_visible(edited,b'def')
-            os.write(master,b'\n')
-            type_visible(b'-----END CERTIFICATE-----',b'-----END CERTIFICATE-----')
-            os.write(master,b'\n\n')
-            expected=b'-----BEGIN CERTIFICATE-----\nabcdef\n-----END CERTIFICATE-----\n'
+            ready('请粘贴完整certificate')
+            cert=pathlib.Path(work,'test-cert.pem')
+            key=pathlib.Path(work,'test-key.pem')
+            subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(key),'-out',str(cert),'-subj','/CN=example.test','-days','1'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            payload=cert.read_bytes()
+            type_visible(payload,b'-----END CERTIFICATE-----')
+            expected=payload
         elif mode in ('eof','interrupt'):
             ready('READY: ')
             if mode=='interrupt':
@@ -129,7 +129,7 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
         else:
             assert p.returncode==0,output
             assert pathlib.Path(work,'out').read_bytes()==expected+b'|finished',pathlib.Path(work,'out').read_bytes()
-            if mode=='secret': assert b'abc' not in output and b'def' not in output,output
+            if mode=='secret': assert b'def' in output and b'READY: ' in output and b'AFTER: ' in output,output
     finally:
         if p.poll() is None: os.killpg(p.pid,signal.SIGKILL); p.wait()
         os.close(master); os.close(slave)
