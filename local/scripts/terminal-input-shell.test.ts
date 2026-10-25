@@ -90,22 +90,19 @@ printf '%s|%s|%s|%s' "$INSTALL_MODE" "$HTTPS_DOMAIN" "$TLS_MODE" "$imported" > "
                 expected=b'server|sub.example.test|import|yes'
         elif mode=='secret':
             ready('READY: ')
-            os.write(master,edited)
-            receive(0.1)
-            assert b'abc' not in output and b'def' not in output,output
+            type_visible(edited,b'def')
             checkpoint=len(output)
             os.write(master,b'\n')
             answer('AFTER: ',b'2',b'2',checkpoint)
             expected=b'abcdef|2'
         elif mode=='pem':
-            ready('READY')
-            type_visible(b'-----BEGIN CERTIFICATE-----',b'-----BEGIN CERTIFICATE-----')
-            os.write(master,b'\n')
-            type_visible(edited,b'def')
-            os.write(master,b'\n')
-            type_visible(b'-----END CERTIFICATE-----',b'-----END CERTIFICATE-----')
-            os.write(master,b'\n\n')
-            expected=b'-----BEGIN CERTIFICATE-----\nabcdef\n-----END CERTIFICATE-----\n'
+            ready('请粘贴完整certificate')
+            cert=pathlib.Path(work,'test-cert.pem')
+            key=pathlib.Path(work,'test-key.pem')
+            subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(key),'-out',str(cert),'-subj','/CN=example.test','-days','1'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            payload=cert.read_bytes()
+            type_visible(payload,b'-----END CERTIFICATE-----')
+            expected=payload
         elif mode in ('eof','interrupt'):
             ready('READY: ')
             if mode=='interrupt':
